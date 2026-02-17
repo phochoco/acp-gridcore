@@ -10,8 +10,7 @@ from config import Config
 
 # GAME SDK imports (optional)
 try:
-    from game_sdk.game.agent import Agent
-    from game_sdk.game.worker import Worker
+    from game_sdk.game.agent import Agent, WorkerConfig
     from game_sdk.game.custom_types import Function, Argument, FunctionResult, FunctionResultStatus
     GAME_SDK_AVAILABLE = True
 except ImportError:
@@ -81,7 +80,7 @@ class TrinityACPAgent:
             print("Agent will run in standalone mode without GAME integration")
             self.game_agent = None
     
-    def _create_trinity_worker(self) -> 'Worker':
+    def _create_trinity_worker(self) -> 'WorkerConfig':
         """Trinity Oracle Worker 생성"""
         # Function 정의: get_daily_luck
         get_luck_function = Function(
@@ -120,9 +119,9 @@ class TrinityACPAgent:
         )
         
         # Worker 생성
-        return Worker(
-            api_key=Config.GAME_API_KEY,
-            description="Saju metaphysics-based trading luck calculator for crypto markets. Provides quantified luck scores and sector recommendations.",
+        return WorkerConfig(
+            id="trinity_oracle_worker",
+            worker_description="Saju metaphysics-based trading luck calculator for crypto markets. Provides quantified luck scores and sector recommendations.",
             get_state_fn=lambda x, y: {},
             action_space=[get_luck_function, verify_function],
             instruction="Calculate daily trading luck scores based on Saju (Chinese metaphysics) analysis. Provide quantified scores (0.0-1.0) with favorable crypto sectors and market indicators."
