@@ -9,8 +9,10 @@ from pydantic import BaseModel, Field, validator
 from typing import Optional
 import logging
 import time
+import os
 from datetime import datetime
 from acp_agent import TrinityACPAgent
+import requests
 
 # 로깅 설정
 logging.basicConfig(
@@ -45,6 +47,23 @@ app.add_middleware(
 agent = TrinityACPAgent()
 start_time = time.time()
 request_count = 0
+
+# 텔레그램 설정
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "***REDACTED_TELEGRAM***")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "1629086047")
+
+def send_telegram_notification(message: str):
+    """텔레그램 알림 전송 (비동기, 실패해도 API는 정상 작동)"""
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload = {
+            "chat_id": TELEGRAM_CHAT_ID,
+            "text": message,
+            "parse_mode": "HTML"
+        }
+        requests.post(url, json=payload, timeout=3)
+    except Exception as e:
+        logger.warning(f"Failed to send Telegram notification: {e}")
 
 # Request Models
 class DailyLuckRequest(BaseModel):
@@ -94,7 +113,7 @@ class VerifyAccuracyRequest(BaseModel):
         description="Force refresh cached data"
     )
 
-# Middleware: Request logging
+# Middleware: Request logging + Telegram notification
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     global request_count
@@ -107,6 +126,26 @@ async def log_requests(request: Request, call_next):
     
     duration = time.time() - start
     logger.info(f"Response: {response.status_code} ({duration:.3f}s)")
+    
+    # 텔레그램 알림 (API 엔드포인트만, health check 제외)
+    if request.url.path.startswith("/api/v1/") and response.status_code == 200:
+        try:
+            function_name = request.url.path.split("/")[-1]
+            client_ip = request.client.host if request.client else "Unknown"
+            
+            message = f"""🔔 <b>API 호출 알림!</b>
+
+• <b>Function:</b> {function_name}
+• <b>IP:</b> {client_ip}
+• <b>시간:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+• <b>응답 시간:</b> {duration:.3f}초
+• <b>상태:</b> ✅ 성공
+
+<i>Trinity ACP Agent</i>"""
+            
+            send_telegram_notification(message)
+        except Exception as e:
+            logger.warning(f"Failed to send notification: {e}")
     
     return response
 
