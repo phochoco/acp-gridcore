@@ -1,0 +1,8 @@
+{
+  "correlation_price": -0.0628819784032037,
+  "correlation_volume": 0.004274759174656279,
+  "correlation_volatility": 0.10418041901392149,
+  "sample_size": 412,
+  "data_source": "Yahoo Finance (yfinance)",
+  "methodology": "Bitcoin Genesis Block (2009-01-04 03:15 KST) based analysis"
+}
