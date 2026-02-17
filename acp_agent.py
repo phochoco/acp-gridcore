@@ -121,10 +121,11 @@ class TrinityACPAgent:
         
         # Worker 생성
         return Worker(
-            id="trinity_oracle_worker",
-            worker_description="Saju metaphysics-based trading luck calculator for crypto markets. Provides quantified luck scores and sector recommendations.",
+            api_key=Config.GAME_API_KEY,
+            description="Saju metaphysics-based trading luck calculator for crypto markets. Provides quantified luck scores and sector recommendations.",
             get_state_fn=lambda x, y: {},
-            action_space=[get_luck_function, verify_function]
+            action_space=[get_luck_function, verify_function],
+            instruction="Calculate daily trading luck scores based on Saju (Chinese metaphysics) analysis. Provide quantified scores (0.0-1.0) with favorable crypto sectors and market indicators."
         )
     
     def _wrap_get_daily_luck(self, target_date: str, user_birth_data: str = None, **kwargs) -> Tuple[FunctionResultStatus, str, dict]:
