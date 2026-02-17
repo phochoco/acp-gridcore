@@ -1,0 +1,17 @@
+[Unit]
+Description=Trinity ACP Virtuals Agent
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/acp-gridcore
+Environment="PATH=/home/ubuntu/acp-gridcore/venv/bin"
+ExecStart=/home/ubuntu/acp-gridcore/venv/bin/python3 acp_agent.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/ubuntu/acp-gridcore/agent.log
+StandardError=append:/home/ubuntu/acp-gridcore/agent.log
+
+[Install]
+WantedBy=multi-user.target

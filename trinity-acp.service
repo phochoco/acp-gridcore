@@ -5,13 +5,13 @@ After=network.target
 [Service]
 Type=simple
 User=ubuntu
-WorkingDirectory=/home/ubuntu/trinity-acp-agent
-Environment="PATH=/home/ubuntu/trinity-acp-agent/venv/bin"
-ExecStart=/home/ubuntu/trinity-acp-agent/venv/bin/uvicorn api_server:app --host 0.0.0.0 --port 8000 --workers 2
+WorkingDirectory=/home/ubuntu/acp-gridcore
+Environment="PATH=/home/ubuntu/acp-gridcore/venv/bin"
+ExecStart=/home/ubuntu/acp-gridcore/venv/bin/uvicorn api_server:app --host 0.0.0.0 --port 8000 --workers 2
 Restart=always
 RestartSec=10
-StandardOutput=append:/home/ubuntu/trinity-acp-agent/api_server.log
-StandardError=append:/home/ubuntu/trinity-acp-agent/api_server.log
+StandardOutput=append:/home/ubuntu/acp-gridcore/api_server.log
+StandardError=append:/home/ubuntu/acp-gridcore/api_server.log
 
 [Install]
 WantedBy=multi-user.target
