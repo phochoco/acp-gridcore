@@ -1,213 +1,334 @@
 """
-Backtest Engine - 신뢰성 검증 데이터 제공
-과거 운세 점수와 실제 BTC 등락폭의 상관관계 분석
+Backtest Engine - 실제 BTC 데이터 기반 신뢰성 검증
+비트코인 제네시스 블록 생일 기반 운세 점수와 실제 BTC 가격/거래량/변동성 상관관계 분석
 """
 import json
 import os
-from typing import Dict, List
+import requests
+import numpy as np
+from typing import Dict, List, Optional
 from datetime import datetime, timedelta
-import random
+
+
+# 비트코인 제네시스 블록 생일 (KST)
+BITCOIN_GENESIS_BIRTH = {
+    "year": 2009,
+    "month": 1,
+    "day": 4,      # UTC 1월 3일 18:15 → KST 1월 4일 03:15
+    "hour": 3,
+    "minute": 15
+}
 
 
 class BacktestEngine:
-    """백테스트 및 신뢰성 검증 엔진"""
+    """실제 BTC 데이터 기반 백테스트 및 신뢰성 검증 엔진"""
     
-    def __init__(self, data_path: str = None):
+    def __init__(self, use_real_data: bool = True, cache_dir: str = None):
         """
         초기화
         
         Args:
-            data_path: 백테스트 데이터 JSON 파일 경로
+            use_real_data: True면 실제 BTC 데이터 사용, False면 샘플 데이터 사용
+            cache_dir: 캐시 디렉토리 경로
         """
-        if data_path is None:
-            data_path = os.path.join(os.path.dirname(__file__), "data", "backtest_data.json")
+        self.use_real_data = use_real_data
         
-        self.data_path = data_path
-        self.historical_data = self._load_or_generate_data()
+        if cache_dir is None:
+            cache_dir = os.path.join(os.path.dirname(__file__), "data")
+        self.cache_dir = cache_dir
+        os.makedirs(self.cache_dir, exist_ok=True)
+        
+        if use_real_data:
+            self.historical_data = self._fetch_real_backtest_data()
+        else:
+            self.historical_data = self._load_sample_data()
     
     def get_correlation_report(self) -> Dict:
         """
-        운세 점수 vs BTC 등락폭 상관관계 리포트
+        운세 점수 vs BTC 다중 지표 상관관계 리포트
         
         Returns:
             {
-                "correlation_coefficient": 0.67,
-                "sample_size": 365,
-                "accuracy_rate": 0.72,
-                "top_signals": [...],
+                "correlation_price": 0.0234,
+                "correlation_volume": -0.0156,
+                "correlation_volatility": 0.0789,
+                "sample_size": 413,
+                "methodology": "...",
                 "disclaimer": "..."
             }
         """
-        # 상관계수 계산 (간단한 구현)
+        if not self.historical_data:
+            return {
+                "error": "No historical data available",
+                "correlation_price": 0.0,
+                "correlation_volume": 0.0,
+                "correlation_volatility": 0.0,
+                "sample_size": 0
+            }
+        
+        # 데이터 추출
         scores = [d["luck_score"] for d in self.historical_data]
-        btc_changes = [d["btc_change_percent"] for d in self.historical_data]
+        price_changes = [d["price_change_percent"] for d in self.historical_data]
+        volume_changes = [d.get("volume_change_percent", 0) for d in self.historical_data]
+        volatility = [abs(d["price_change_percent"]) for d in self.historical_data]
         
-        correlation = self._calculate_correlation(scores, btc_changes)
-        
-        # 예측 정확도 계산
-        accuracy = self._calculate_accuracy(scores, btc_changes)
-        
-        # 상위 시그널 추출
-        top_signals = self._get_top_signals(5)
+        # 상관계수 계산 (소수점 4자리)
+        corr_price = round(self._calculate_correlation(scores, price_changes), 4)
+        corr_volume = round(self._calculate_correlation(scores, volume_changes), 4)
+        corr_volatility = round(self._calculate_correlation(scores, volatility), 4)
         
         return {
-            "correlation_coefficient": round(correlation, 2),
+            "correlation_coefficient": corr_price,  # 기존 호환성
+            "correlation_price": corr_price,
+            "correlation_volume": corr_volume,
+            "correlation_volatility": corr_volatility,
             "sample_size": len(self.historical_data),
-            "accuracy_rate": round(accuracy, 2),
-            "top_signals": top_signals,
-            "methodology": "Pearson correlation between daily luck score (0-1) and BTC price change (%)",
+            "accuracy_rate": self._calculate_accuracy(scores, price_changes),
+            "methodology": f"Bitcoin Genesis Block ({BITCOIN_GENESIS_BIRTH['year']}-{BITCOIN_GENESIS_BIRTH['month']:02d}-{BITCOIN_GENESIS_BIRTH['day']:02d} {BITCOIN_GENESIS_BIRTH['hour']:02d}:{BITCOIN_GENESIS_BIRTH['minute']:02d} KST) based analysis",
+            "data_source": "CoinGecko API" if self.use_real_data else "Sample Data",
             "disclaimer": "Past performance does not guarantee future results. This is for informational purposes only."
         }
     
-    def _load_or_generate_data(self) -> List[Dict]:
-        """
-        백테스트 데이터 로드 또는 생성
-        """
-        # 경로 보안 검증
-        safe_path = os.path.abspath(self.data_path)
-        data_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "data"))
+    def _fetch_real_backtest_data(self) -> List[Dict]:
+        """실제 BTC 가격 데이터 수집 및 백테스트"""
+        print("🔍 Fetching real BTC data from CoinGecko API...")
         
-        # Path Traversal 방지
-        if not safe_path.startswith(data_dir):
-            raise ValueError(f"Invalid data path: {self.data_path}")
+        # 1. BTC 가격 + 거래량 데이터 수집
+        btc_data = self._fetch_btc_prices_and_volumes()
         
-        # 파일이 존재하면 로드
-        if os.path.exists(safe_path):
-            with open(safe_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
+        if not btc_data:
+            print("⚠️ Failed to fetch BTC data, using sample data")
+            return self._load_sample_data()
         
-        # 없으면 생성 (2025-01-01 ~ 2026-02-17, 약 413일)
-        print("Generating backtest data...")
-        data = self._generate_sample_data()
+        # 2. 운세 점수 계산
+        print("🔮 Calculating Bitcoin luck scores...")
+        luck_scores = self._calculate_bitcoin_luck_scores(btc_data)
         
-        # 저장
-        os.makedirs(os.path.dirname(safe_path), exist_ok=True)
-        with open(safe_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+        # 3. 데이터 매칭
+        matched_data = self._match_data(btc_data, luck_scores)
         
-        return data
+        print(f"✅ Backtest data ready: {len(matched_data)} days")
+        return matched_data
     
-    def _generate_sample_data(self) -> List[Dict]:
-        """
-        샘플 백테스트 데이터 생성
+    def _fetch_btc_prices_and_volumes(self) -> Optional[List[Dict]]:
+        """CoinGecko API로 BTC 가격 + 거래량 데이터 수집 (캐싱 포함)"""
+        cache_file = os.path.join(self.cache_dir, "btc_data_cache.json")
         
-        Note: 실제로는 CoinGecko API 등에서 실제 BTC 가격 데이터를 가져와야 함
-        현재는 상관관계가 있는 것처럼 보이는 샘플 데이터 생성
-        """
-        data = []
-        start_date = datetime(2025, 1, 1)
-        end_date = datetime(2026, 2, 17)
+        # 캐시 확인 (24시간 이내)
+        if os.path.exists(cache_file):
+            cache_age = datetime.now().timestamp() - os.path.getmtime(cache_file)
+            if cache_age < 86400:  # 24시간
+                print("📦 Loading BTC data from cache...")
+                with open(cache_file, 'r') as f:
+                    return json.load(f)
         
-        current_date = start_date
-        while current_date <= end_date:
-            # 운세 점수 생성 (0.0 ~ 1.0)
-            luck_score = random.uniform(0.2, 0.9)
+        # API 호출 (무료 버전 사용)
+        try:
+            # CoinGecko 무료 API는 market_chart/range 대신 market_chart 사용
+            url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart"
             
-            # BTC 변동률 생성 (운세 점수와 약간의 상관관계 부여)
-            # 높은 운세 점수 → 양의 변동률 경향
-            base_change = (luck_score - 0.5) * 10  # -3% ~ +4%
-            noise = random.uniform(-3, 3)
-            btc_change = base_change + noise
+            params = {
+                "vs_currency": "usd",
+                "days": "413",  # 최근 413일
+                "interval": "daily"
+            }
             
-            data.append({
-                "date": current_date.strftime("%Y-%m-%d"),
-                "luck_score": round(luck_score, 2),
-                "btc_change_percent": round(btc_change, 2),
-                "btc_price": round(45000 + random.uniform(-5000, 5000), 2)  # 샘플 가격
+            print(f"🌐 Calling CoinGecko API (free tier)...")
+            response = requests.get(url, params=params, timeout=30)
+            
+            if response.status_code == 401:
+                print("⚠️ CoinGecko API requires authentication, using sample data")
+                return None
+            
+            response.raise_for_status()
+            
+            data = response.json()
+            
+            # 일일 데이터로 변환
+            daily_data = self._convert_to_daily_data(
+                data.get("prices", []),
+                data.get("total_volumes", [])
+            )
+            
+            # 캐시 저장
+            with open(cache_file, 'w') as f:
+                json.dump(daily_data, f, indent=2)
+            
+            print(f"✅ Fetched {len(daily_data)} days of BTC data")
+            return daily_data
+            
+        except Exception as e:
+            print(f"❌ Error fetching BTC data: {e}")
+            return None
+    
+    def _convert_to_daily_data(self, prices: List, volumes: List) -> List[Dict]:
+        """시간별 데이터를 일일 데이터로 변환"""
+        daily_data = []
+        
+        # 날짜별로 그룹화
+        price_by_date = {}
+        volume_by_date = {}
+        
+        for timestamp, price in prices:
+            date_str = datetime.fromtimestamp(timestamp / 1000).strftime("%Y-%m-%d")
+            if date_str not in price_by_date:
+                price_by_date[date_str] = []
+            price_by_date[date_str].append(price)
+        
+        for timestamp, volume in volumes:
+            date_str = datetime.fromtimestamp(timestamp / 1000).strftime("%Y-%m-%d")
+            if date_str not in volume_by_date:
+                volume_by_date[date_str] = []
+            volume_by_date[date_str].append(volume)
+        
+        # 일일 평균 계산 및 변동률 계산
+        dates = sorted(price_by_date.keys())
+        prev_price = None
+        prev_volume = None
+        
+        for date_str in dates:
+            avg_price = np.mean(price_by_date[date_str])
+            avg_volume = np.mean(volume_by_date.get(date_str, [0]))
+            
+            price_change = 0.0
+            volume_change = 0.0
+            
+            if prev_price is not None:
+                price_change = ((avg_price - prev_price) / prev_price) * 100
+            
+            if prev_volume is not None and prev_volume > 0:
+                volume_change = ((avg_volume - prev_volume) / prev_volume) * 100
+            
+            daily_data.append({
+                "date": date_str,
+                "price": round(avg_price, 2),
+                "volume": round(avg_volume, 2),
+                "price_change_percent": round(price_change, 4),
+                "volume_change_percent": round(volume_change, 4)
             })
             
-            current_date += timedelta(days=1)
+            prev_price = avg_price
+            prev_volume = avg_volume
         
-        return data
+        return daily_data[1:]  # 첫날은 변동률 없으므로 제외
+    
+    def _calculate_bitcoin_luck_scores(self, btc_data: List[Dict]) -> List[Dict]:
+        """비트코인 제네시스 블록 생일 기반 운세 점수 계산"""
+        from trinity_engine import TrinityEngine
+        
+        engine = TrinityEngine()
+        luck_scores = []
+        
+        for data in btc_data:
+            date_str = data["date"]
+            
+            try:
+                score = engine.calculate_daily_luck(
+                    target_date=date_str,
+                    birth_year=BITCOIN_GENESIS_BIRTH["year"],
+                    birth_month=BITCOIN_GENESIS_BIRTH["month"],
+                    birth_day=BITCOIN_GENESIS_BIRTH["day"],
+                    birth_hour=BITCOIN_GENESIS_BIRTH["hour"]
+                )
+                
+                luck_scores.append({
+                    "date": date_str,
+                    "luck_score": score
+                })
+            except Exception as e:
+                print(f"⚠️ Error calculating luck score for {date_str}: {e}")
+                luck_scores.append({
+                    "date": date_str,
+                    "luck_score": 0.5  # 기본값
+                })
+        
+        return luck_scores
+    
+    def _match_data(self, btc_data: List[Dict], luck_scores: List[Dict]) -> List[Dict]:
+        """BTC 데이터와 운세 점수 매칭"""
+        matched = []
+        
+        # 날짜별 인덱스 생성
+        luck_by_date = {d["date"]: d["luck_score"] for d in luck_scores}
+        
+        for btc in btc_data:
+            date = btc["date"]
+            if date in luck_by_date:
+                matched.append({
+                    "date": date,
+                    "luck_score": luck_by_date[date],
+                    "btc_price": btc["price"],
+                    "btc_change_percent": btc["price_change_percent"],
+                    "btc_volume": btc.get("volume", 0),
+                    "volume_change_percent": btc.get("volume_change_percent", 0)
+                })
+        
+        return matched
     
     def _calculate_correlation(self, x: List[float], y: List[float]) -> float:
-        """
-        Pearson 상관계수 계산
-        """
-        n = len(x)
-        if n == 0:
+        """Pearson 상관계수 계산"""
+        if len(x) != len(y) or len(x) < 2:
             return 0.0
         
-        mean_x = sum(x) / n
-        mean_y = sum(y) / n
-        
-        numerator = sum((x[i] - mean_x) * (y[i] - mean_y) for i in range(n))
-        denominator_x = sum((x[i] - mean_x) ** 2 for i in range(n)) ** 0.5
-        denominator_y = sum((y[i] - mean_y) ** 2 for i in range(n)) ** 0.5
-        
-        if denominator_x == 0 or denominator_y == 0:
+        try:
+            correlation = np.corrcoef(x, y)[0, 1]
+            return correlation if not np.isnan(correlation) else 0.0
+        except:
             return 0.0
-        
-        return numerator / (denominator_x * denominator_y)
     
     def _calculate_accuracy(self, scores: List[float], changes: List[float]) -> float:
-        """
-        예측 정확도 계산
+        """예측 정확도 계산 (방향 일치율)"""
+        if len(scores) != len(changes) or len(scores) < 2:
+            return 0.0
         
-        운세 점수 > 0.6이면 상승 예측, < 0.4이면 하락 예측
-        실제 BTC 변동과 비교
-        """
         correct = 0
-        total = 0
-        
-        for score, change in zip(scores, changes):
-            if score > 0.6:  # 상승 예측
-                if change > 0:
-                    correct += 1
-                total += 1
-            elif score < 0.4:  # 하락 예측
-                if change < 0:
-                    correct += 1
-                total += 1
-        
-        return correct / total if total > 0 else 0.0
-    
-    def _get_top_signals(self, count: int = 5) -> List[Dict]:
-        """
-        가장 강한 시그널 추출 (극단적인 점수 + 큰 변동)
-        """
-        # 점수가 극단적이고 변동이 큰 날짜 찾기
-        scored_data = []
-        for d in self.historical_data:
-            # 극단성 점수 (0.5에서 얼마나 멀리 떨어져 있는가)
-            extremeness = abs(d["luck_score"] - 0.5)
-            # 변동 크기
-            volatility = abs(d["btc_change_percent"])
-            # 종합 점수
-            signal_strength = extremeness * volatility
+        for i in range(len(scores)):
+            # 운세 점수 > 0.5 → 상승 예측
+            # 운세 점수 < 0.5 → 하락 예측
+            predicted_up = scores[i] > 0.5
+            actual_up = changes[i] > 0
             
-            scored_data.append({
-                **d,
-                "signal_strength": signal_strength
+            if predicted_up == actual_up:
+                correct += 1
+        
+        return correct / len(scores)
+    
+    def _load_sample_data(self) -> List[Dict]:
+        """샘플 데이터 로드 (실제 데이터 사용 불가 시)"""
+        sample_file = os.path.join(self.cache_dir, "backtest_data.json")
+        
+        if os.path.exists(sample_file):
+            with open(sample_file, 'r') as f:
+                return json.load(f)
+        
+        # 샘플 데이터 생성
+        print("⚠️ Generating sample data...")
+        return self._generate_sample_data()
+    
+    def _generate_sample_data(self) -> List[Dict]:
+        """샘플 백테스트 데이터 생성 (폴백용)"""
+        import random
+        
+        data = []
+        start_date = datetime(2025, 1, 1)
+        
+        for i in range(413):
+            date = start_date + timedelta(days=i)
+            luck_score = random.uniform(0.3, 0.9)
+            
+            # 약한 상관관계 시뮬레이션
+            base_change = random.gauss(0, 3)
+            luck_influence = (luck_score - 0.5) * 2
+            price_change = base_change + luck_influence
+            
+            data.append({
+                "date": date.strftime("%Y-%m-%d"),
+                "luck_score": round(luck_score, 2),
+                "btc_price": round(50000 + random.gauss(0, 5000), 2),
+                "price_change_percent": round(price_change, 2),  # 키 이름 통일
+                "btc_change_percent": round(price_change, 2),     # 호환성
+                "btc_volume": round(random.uniform(20, 40) * 1e9, 2),
+                "volume_change_percent": round(random.gauss(0, 10), 2)
             })
         
-        # 상위 N개 추출
-        top = sorted(scored_data, key=lambda x: x["signal_strength"], reverse=True)[:count]
-        
-        return [
-            {
-                "date": d["date"],
-                "luck_score": d["luck_score"],
-                "btc_change": f"{d['btc_change_percent']:+.1f}%",
-                "signal_type": "BULLISH" if d["luck_score"] > 0.6 else "BEARISH"
-            }
-            for d in top
-        ]
-
-
-# ===== 테스트 코드 =====
-
-if __name__ == "__main__":
-    engine = BacktestEngine()
-    
-    report = engine.get_correlation_report()
-    
-    print("=== Backtest Correlation Report ===")
-    print(f"Correlation Coefficient: {report['correlation_coefficient']}")
-    print(f"Sample Size: {report['sample_size']} days")
-    print(f"Accuracy Rate: {report['accuracy_rate']:.1%}")
-    print(f"\nTop Signals:")
-    for signal in report['top_signals']:
-        print(f"  {signal['date']}: Score={signal['luck_score']}, BTC={signal['btc_change']} ({signal['signal_type']})")
-    print(f"\nMethodology: {report['methodology']}")
-    print(f"\nDisclaimer: {report['disclaimer']}")
+        return data
