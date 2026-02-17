@@ -287,34 +287,10 @@ class TrinityACPAgent:
             print("Agent functions are available but not connected to GAME platform")
 
 
-# ===== 테스트 코드 =====
+
+# ===== 메인 실행 코드 =====
 
 if __name__ == "__main__":
-    # 환경 변수 없이 테스트 (실제로는 GAME_API_KEY 필요)
-    try:
-        agent = TrinityACPAgent(api_key="test_key_for_demo")
-    except ValueError as e:
-        print(f"Note: {e}")
-        print("For testing purposes, creating agent without validation...\n")
-        
-        # 검증 우회 (테스트용)
-        Config.GAME_API_KEY = "test_key"
-        agent = TrinityACPAgent()
-    
-    # 테스트 1: Daily Luck
-    print("=== Test 1: Get Daily Luck ===")
-    result1 = agent.get_daily_luck(
-        target_date="2026-02-20",
-        user_birth_data="1990-05-15 14:30"
-    )
-    print(f"Score: {result1['trading_luck_score']}")
-    print(f"Sectors: {', '.join(result1['favorable_sectors'])}")
-    print(f"Volatility: {result1['volatility_index']}")
-    print(f"Sentiment: {result1['market_sentiment']}")
-    
-    # 테스트 2: Verify Accuracy
-    print("\n=== Test 2: Verify Accuracy ===")
-    result2 = agent.verify_accuracy()
-    print(f"Correlation: {result2['correlation_coefficient']}")
-    print(f"Accuracy: {result2['accuracy_rate']:.1%}")
-    print(f"Sample Size: {result2['sample_size']} days")
+    # .env에서 API Key 로드
+    agent = TrinityACPAgent()
+    agent.run()
