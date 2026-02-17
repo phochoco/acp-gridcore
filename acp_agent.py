@@ -11,6 +11,7 @@ from config import Config
 # GAME SDK imports (optional)
 try:
     from game_sdk.game.agent import Agent
+    from game_sdk.game.worker import WorkerConfig
     from game_sdk.game.custom_types import Function, Argument, FunctionResult, FunctionResultStatus
     GAME_SDK_AVAILABLE = True
 except ImportError:
@@ -55,59 +56,19 @@ class TrinityACPAgent:
                     """Simple stateless state management"""
                     return {}
                 
-                # Agent 생성
+                # Worker 생성 및 Agent 초기화
+                trinity_worker = self._create_trinity_worker()
+                
+                # Agent 생성 (Worker 전달)
                 self.game_agent = Agent(
                     api_key=Config.GAME_API_KEY,
                     name=Config.AGENT_NAME,
                     agent_goal="Provide accurate daily trading luck scores based on traditional Chinese metaphysics (Saju) for crypto trading bots.",
                     agent_description=Config.AGENT_DESCRIPTION,
                     get_agent_state_fn=get_state_fn,
-                    workers=[],  # No workers needed
+                    workers=[trinity_worker],  # Worker 기반 Function 등록
                     model_name="Llama-3.1-405B-Instruct"
                 )
-                
-                # Function 등록: get_daily_luck
-                get_luck_function = Function(
-                    fn_name="get_daily_luck",
-                    fn_description="Calculate daily trading luck score for crypto trading bots. Returns quantified luck score (0.0-1.0) with favorable sectors and market indicators.",
-                    args=[
-                        Argument(
-                            name="target_date",
-                            type="string",
-                            description="Target date for analysis in YYYY-MM-DD format (e.g., '2026-02-20')",
-                            required=True
-                        ),
-                        Argument(
-                            name="user_birth_data",
-                            type="string",
-                            description="Optional: User birth data in 'YYYY-MM-DD HH:MM' format for personalized luck score",
-                            required=False
-                        )
-                    ],
-                    executable=self._wrap_get_daily_luck
-                )
-                
-                # Function 등록: verify_accuracy
-                verify_function = Function(
-                    fn_name="verify_accuracy",
-                    fn_description="Get backtest correlation report showing historical accuracy of luck scores vs BTC price movements. Provides correlation coefficient and accuracy rate.",
-                    args=[
-                        Argument(
-                            name="force_refresh",
-                            type="boolean",
-                            description="Force refresh cached data (default: false)",
-                            required=False
-                        )
-                    ],
-                    executable=self._wrap_verify_accuracy
-                )
-                
-                # Agent에 Function 등록
-                self.game_agent.add_function(get_luck_function)
-                self.game_agent.add_function(verify_function)
-                
-                # Agent 컴파일 (필수!)
-                self.game_agent.compile()
                 
                 print(f"✅ GAME SDK initialized: {Config.AGENT_NAME}")
                 
@@ -119,6 +80,52 @@ class TrinityACPAgent:
             print("⚠️ GAME SDK not available")
             print("Agent will run in standalone mode without GAME integration")
             self.game_agent = None
+    
+    def _create_trinity_worker(self) -> 'WorkerConfig':
+        """Trinity Oracle Worker 생성"""
+        # Function 정의: get_daily_luck
+        get_luck_function = Function(
+            fn_name="get_daily_luck",
+            fn_description="Calculate daily trading luck score for crypto trading bots. Returns quantified luck score (0.0-1.0) with favorable sectors and market indicators.",
+            args=[
+                Argument(
+                    name="target_date",
+                    type="string",
+                    description="Target date for analysis in YYYY-MM-DD format (e.g., '2026-02-20')",
+                    required=True
+                ),
+                Argument(
+                    name="user_birth_data",
+                    type="string",
+                    description="Optional: User birth data in 'YYYY-MM-DD HH:MM' format for personalized luck score",
+                    required=False
+                )
+            ],
+            executable=self._wrap_get_daily_luck
+        )
+        
+        # Function 정의: verify_accuracy
+        verify_function = Function(
+            fn_name="verify_accuracy",
+            fn_description="Get backtest correlation report showing historical accuracy of luck scores vs BTC price movements. Provides correlation coefficient and accuracy rate.",
+            args=[
+                Argument(
+                    name="force_refresh",
+                    type="boolean",
+                    description="Force refresh cached data (default: false)",
+                    required=False
+                )
+            ],
+            executable=self._wrap_verify_accuracy
+        )
+        
+        # Worker 생성
+        return WorkerConfig(
+            id="trinity_oracle_worker",
+            worker_description="Saju metaphysics-based trading luck calculator for crypto markets. Provides quantified luck scores and sector recommendations.",
+            get_state_fn=lambda x, y: {},
+            action_space=[get_luck_function, verify_function]
+        )
     
     def _wrap_get_daily_luck(self, target_date: str, user_birth_data: str = None, **kwargs) -> Tuple[FunctionResultStatus, str, dict]:
         """GAME SDK Function wrapper for get_daily_luck"""
