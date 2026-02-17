@@ -1,0 +1,27 @@
+# Virtuals Protocol SDK
+game_sdk>=0.1.0
+
+# FastAPI & Web Server
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+
+# 만세력 및 시간 계산
+korean-lunar-calendar>=0.3.0
+pylunar>=2.0.0
+python-dateutil>=2.8.0
+pytz>=2023.3
+
+# 데이터 처리
+pandas>=2.0.0
+numpy>=1.24.0
+
+# HTTP 요청 (BTC 가격 데이터)
+requests>=2.31.0
+
+# 환경 변수 관리
+python-dotenv>=1.0.0
+
+# 테스트
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
