@@ -63,6 +63,27 @@ def _call_handler(service: str, requirement: dict) -> dict:
         return {"error": str(e)}
 
 
+def _safe_parse_requirement(raw) -> dict:
+    """
+    requirement를 안전하게 dict로 변환.
+    None, 빈 문자열, JSON 문자열, dict 등 모든 형태 처리.
+    """
+    if not raw:
+        return {}
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        raw = raw.strip()
+        if not raw:
+            return {}
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            return {}
+    return {}
+
+
 def on_new_task(task) -> str:
     """
     ACP 새 주문 수신 콜백
@@ -70,21 +91,23 @@ def on_new_task(task) -> str:
     """
     try:
         job_id = getattr(task, 'id', 'unknown')
-        service_name = getattr(task, 'service_name', '') or getattr(task, 'name', '')
-        requirement = getattr(task, 'requirement', {}) or {}
+        service_name = str(getattr(task, 'service_name', '') or getattr(task, 'name', '') or '')
+        # ★ 방어 코드: requirement를 항상 dict로 안전하게 파싱
+        requirement = _safe_parse_requirement(getattr(task, 'requirement', None))
 
         print(f"\n[Seller] New job received! ID: {job_id}, Service: {service_name}")
-        print(f"[Seller] Requirement: {requirement}")
+        print(f"[Seller] Requirement (parsed): {requirement}")
 
-        # ===== 서비스 라우팅 =====
-        if 'dailyLuck' in str(service_name) or 'target_date' in str(requirement):
+        # ===== 서비스 라우팅 (대소문자 무시) =====
+        service_lower = service_name.lower()
+        if 'dailyluck' in service_lower or 'target_date' in requirement:
             service_key = "dailyLuck"
             revenue = "$0.01 USDC"
-        elif 'deepLuck' in str(service_name) or 'birth_date' in str(requirement):
+        elif 'deepluck' in service_lower or 'birth_date' in requirement:
             service_key = "deepLuck"
             revenue = "$0.50 USDC"
         else:
-            print(f"[Seller] Unknown service: {service_name}")
+            print(f"[Seller] Unknown service: {service_name}, requirement: {requirement}")
             return json.dumps({"error": f"Unknown service: {service_name}"})
 
         print(f"[Seller] Processing {service_key}...")
@@ -174,6 +197,8 @@ def run_seller():
         )
 
         # 폴링 루프 — 30초마다 미처리 주문 확인
+        # ★ 중복 처리 방지: 이미 처리한 job_id 추적
+        processed_jobs = set()
         import time
         print("[Seller] Polling loop started (every 30s)...")
         while True:
@@ -185,26 +210,68 @@ def run_seller():
                         try:
                             job_id = getattr(job, 'id', 'unknown')
                             job_name = getattr(job, 'name', '') or ''
-                            requirement = getattr(job, 'requirement', {}) or {}
+                            requirement = _safe_parse_requirement(getattr(job, 'requirement', None))
                             phase = str(getattr(job, 'phase', ''))
                             client_addr = getattr(job, 'client_address', '')
 
                             print(f"[Seller] Job {job_id}: name={job_name}, phase={phase}")
-                            print(f"[Seller] Requirement: {requirement}")
+                            print(f"[Seller] Requirement (parsed): {requirement}")
 
-                            # 자기 자신이 보낸 job (buyer==evaluator)은 스킵
-                            if client_addr.lower() == agent_wallet.lower():
-                                print(f"[Seller] Skipping own job {job_id}")
+                            # ★ 이미 처리한 job은 스킵 (중복 처리 방지)
+                            if job_id in processed_jobs:
+                                print(f"[Seller] Skipping already-processed job {job_id}")
                                 continue
 
-                            # 주문 수락
+                            # 자기 자신이 보낸 job (buyer==evaluator)은 스킵
+                            if client_addr and agent_wallet and client_addr.lower() == agent_wallet.lower():
+                                print(f"[Seller] Skipping own job {job_id}")
+                                processed_jobs.add(job_id)
+                                continue
+
+                            # ★ 서비스 라우팅 (대소문자 무시)
+                            service_lower = job_name.lower()
+                            if 'dailyluck' in service_lower or 'target_date' in requirement:
+                                service_key = "dailyLuck"
+                                revenue_val = 0.01
+                            elif 'deepluck' in service_lower or 'birth_date' in requirement:
+                                service_key = "deepLuck"
+                                revenue_val = 0.50
+                            else:
+                                print(f"[Seller] Unknown service: {job_name}, skipping")
+                                processed_jobs.add(job_id)
+                                continue
+
+                            # ★ 주문 수락
                             job.accept()
                             print(f"[Seller] Job {job_id} accepted!")
 
-                            # 서비스 처리 및 결과 전달
-                            deliverable = on_new_task(job)
-                            job.deliver(deliverable)
+                            # ★ 엔진 직접 호출 (on_new_task 중복 호출 없이)
+                            result = _call_handler(service_key, requirement)
+
+                            if "error" not in result:
+                                buyer_addr = getattr(job, 'client_address', '') or ''
+                                # 판매 내역 저장
+                                if BOT_AVAILABLE:
+                                    save_sale(job_id, service_key, buyer_addr, revenue_val)
+                                # 텔레그램 알림
+                                _send_telegram(
+                                    f"💰 [SALE] <b>{service_key} Sold!</b>\n"
+                                    f"- Job ID: {job_id}\n"
+                                    f"- Sentiment: {result.get('sentiment', 'N/A')}\n"
+                                    f"- Action: {result.get('action_signal', 'N/A')} / {result.get('strategy_tag', 'N/A')}\n"
+                                    f"- Sectors: {result.get('sectors', [])}\n"
+                                    f"- Revenue: ${revenue_val} USDC"
+                                )
+                                print(f"[Seller] {service_key} processed! Sentiment: {result.get('sentiment')}")
+                            else:
+                                print(f"[Seller] Handler error: {result}")
+
+                            # ★ 결과 전달 (성공/실패 모두 deliver)
+                            job.deliver(json.dumps(result))
                             print(f"[Seller] Job {job_id} delivered!")
+
+                            # ★ 처리 완료 표시
+                            processed_jobs.add(job_id)
 
                         except Exception as je:
                             print(f"[Seller] Job handling error: {je}")
@@ -213,6 +280,8 @@ def run_seller():
                                 f"- Job ID: {getattr(job, 'id', 'unknown')}\n"
                                 f"- Error: {str(je)[:200]}"
                             )
+                            # ★ 에러 발생 job도 processed에 추가 (무한 재시도 방지)
+                            processed_jobs.add(getattr(job, 'id', 'unknown'))
                 else:
                     print(f"[Seller] No pending jobs at {datetime.now().strftime('%H:%M:%S')}")
             except Exception as pe:
