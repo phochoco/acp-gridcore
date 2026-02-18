@@ -129,14 +129,19 @@ def on_new_task(job, memo_to_sign=None):
             job.reject(f"Unknown service: {service_name}")
             return
 
-        # ★ 협상 승인 (nonce 충돌 시 재시도)
+        # ★ 협상 승인 (memo_to_sign 직접 사용)
         import time
         print(f"[Seller] Accepting job {job_id}...")
         for attempt in range(3):
             try:
-                time.sleep(3)  # nonce 정리 대기
-                job.accept()
-                print(f"[Seller] Job {job_id} accepted!")
+                time.sleep(2)  # nonce 정리 대기
+                if memo_to_sign is not None:
+                    # memo_to_sign을 직접 sign (더 정확한 방법)
+                    memo_to_sign.sign(True, f"Trinity {service_key} accepted")
+                    print(f"[Seller] Job {job_id} accepted via memo_to_sign!")
+                else:
+                    job.accept()
+                    print(f"[Seller] Job {job_id} accepted via job.accept()!")
                 break
             except Exception as ae:
                 err_str = str(ae)
