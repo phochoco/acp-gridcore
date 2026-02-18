@@ -491,4 +491,35 @@ sudo systemctl restart trinity-acp trinity-acp-agent trinity-seller
 
 ---
 
-*마지막 업데이트: 2026-02-18 16:05 KST*
+### 5. /wallet 명령어 버그 수정
+
+**문제**: BaseScan API V1 deprecated → `NOTOK` 응답
+**해결**: Base 공식 RPC(`mainnet.base.org`) JSON-RPC 방식으로 교체
+
+```python
+# ETH 잔액: eth_getBalance
+# USDC 잔액: eth_call → balanceOf(address) ERC-20
+```
+
+**결과**: ETH + USDC 잔액 동시 조회 (무료, 외부 API 키 불필요)
+
+**Git 커밋:**
+```
+fix: /wallet use Base RPC instead of deprecated BaseScan V1 API (ETH+USDC)
+```
+
+---
+
+### 최종 명령어 목록
+
+| 명령어 | 기능 |
+|--------|------|
+| `/help` | 명령어 목록 |
+| `/sales` | 총 판매 건수 + 수익 (서비스별) |
+| `/last` | 마지막 구매자 지갑 + 구매 횟수 + BaseScan 링크 |
+| `/wallet` | 에이전트 지갑 ETH + USDC 잔액 실시간 조회 |
+| `/status` | ACP 폴링 / 텔레그램 봇 / 뒷조사 모듈 상태 |
+
+---
+
+*마지막 업데이트: 2026-02-18 17:17 KST*
