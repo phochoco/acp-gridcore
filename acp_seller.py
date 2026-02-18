@@ -106,6 +106,12 @@ def on_new_task(job, memo_to_sign=None):
         service_name = str(job.name or '')
         requirement = _safe_parse_requirement(job.requirement)
 
+        # ★ target_date 빈 값이면 오늘 날짜로 기본값
+        if 'target_date' in requirement and not requirement.get('target_date'):
+            from datetime import date
+            requirement['target_date'] = date.today().strftime('%Y-%m-%d')
+            print(f"[Seller] target_date empty, using today: {requirement['target_date']}")
+
         print(f"\n[Seller] ★ STEP1: New job! ID={job_id}, Service={service_name}")
         print(f"[Seller] Requirement: {requirement}")
         print(f"[Seller] Phase: {job.phase}, memo next_phase: {memo_to_sign.next_phase if memo_to_sign else 'N/A'}")
@@ -133,6 +139,10 @@ def on_new_task(job, memo_to_sign=None):
                 print(f"[Seller] Job {job_id} accepted!")
                 break
             except Exception as ae:
+                err_str = str(ae)
+                if 'Already signed' in err_str or 'already' in err_str.lower():
+                    print(f"[Seller] Job {job_id} already signed, continuing...")
+                    break  # 이미 accept된 job → 그냥 계속 진행
                 print(f"[Seller] accept() attempt {attempt+1} failed: {ae}")
                 if attempt == 2:
                     raise ae
