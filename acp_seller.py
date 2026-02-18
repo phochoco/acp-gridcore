@@ -1,21 +1,27 @@
 """
 Trinity ACP Seller — 서비스 판매자 모듈
 다른 에이전트가 dailyLuck / deepLuck 서비스를 구매하면 자동 처리
-virtuals-acp SDK on_new_task 콜백 기반
+virtuals-acp SDK 폴링 방식 + handlers.py 직접 호출
 """
 import os
 import json
-import asyncio
 import requests
 from datetime import datetime
-from typing import Optional
 from dotenv import load_dotenv
 
 load_dotenv()
 
-BASE_API_URL = os.getenv("BASE_API_URL", "http://15.165.210.0:8000")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "***REDACTED_TELEGRAM***")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "1629086047")
+
+# handlers.py 직접 import (Trinity 엔진 직접 호출)
+try:
+    import handlers as _handlers
+    HANDLERS_AVAILABLE = True
+    print("[Seller] handlers.py loaded successfully")
+except Exception as e:
+    HANDLERS_AVAILABLE = False
+    print(f"[Seller] handlers.py load failed: {e}")
 
 
 def _send_telegram(message: str):
@@ -29,38 +35,21 @@ def _send_telegram(message: str):
         pass
 
 
-def _call_daily_luck(target_date: str) -> dict:
-    """Trinity API에서 dailyLuck 데이터 조회"""
+def _call_handler(service: str, requirement: dict) -> dict:
+    """handlers.py를 통해 Trinity 엔진 직접 호출"""
     try:
-        r = requests.post(
-            f"{BASE_API_URL}/api/v1/daily-luck",
-            json={"target_date": target_date},
-            timeout=10
-        )
-        if r.status_code == 200:
-            return r.json()
+        if not HANDLERS_AVAILABLE:
+            return {"error": "handlers.py not available"}
+        if service == "dailyLuck":
+            result_str = _handlers.handle_daily_luck(requirement)
+        elif service == "deepLuck":
+            result_str = _handlers.handle_deep_luck(requirement)
+        else:
+            return {"error": f"Unknown service: {service}"}
+        return json.loads(result_str)
     except Exception as e:
-        print(f"[Seller] dailyLuck API error: {e}")
-    return {}
-
-
-def _call_deep_luck(birth_date: str, birth_time: str) -> dict:
-    """Trinity API에서 deepLuck 데이터 조회"""
-    try:
-        r = requests.post(
-            f"{BASE_API_URL}/api/v1/deep-luck",
-            json={
-                "birth_date": birth_date,
-                "birth_time": birth_time,
-                "target_date": datetime.now().strftime("%Y-%m-%d")
-            },
-            timeout=15
-        )
-        if r.status_code == 200:
-            return r.json()
-    except Exception as e:
-        print(f"[Seller] deepLuck API error: {e}")
-    return {}
+        print(f"[Seller] Handler error: {e}")
+        return {"error": str(e)}
 
 
 def on_new_task(task) -> str:
@@ -76,75 +65,34 @@ def on_new_task(task) -> str:
         print(f"\n[Seller] New job received! ID: {job_id}, Service: {service_name}")
         print(f"[Seller] Requirement: {requirement}")
 
-        # ===== dailyLuck 처리 =====
+        # ===== 서비스 라우팅 =====
         if 'dailyLuck' in str(service_name) or 'target_date' in str(requirement):
-            target_date = requirement.get('target_date', datetime.now().strftime('%Y-%m-%d'))
-            print(f"[Seller] Processing dailyLuck for date: {target_date}")
-
-            result = _call_daily_luck(target_date)
-
-            if result:
-                deliverable = json.dumps({
-                    "lucky_report": json.dumps({
-                        "trading_luck_score": result.get("trading_luck_score", 0),
-                        "favorable_sectors": result.get("favorable_sectors", []),
-                        "volatility_index": result.get("volatility_index", "UNKNOWN"),
-                        "market_sentiment": result.get("market_sentiment", "NEUTRAL"),
-                        "wealth_opportunity": result.get("wealth_opportunity", "LOW"),
-                        "analysis_date": target_date,
-                        "provider": "Trinity Agent - Eastern Metaphysics"
-                    })
-                })
-            else:
-                deliverable = json.dumps({"lucky_report": json.dumps({"error": "Service temporarily unavailable"})})
-
-            _send_telegram(
-                f"[SALE] <b>dailyLuck Sold!</b>\n"
-                f"- Job ID: {job_id}\n"
-                f"- Date: {target_date}\n"
-                f"- Score: {result.get('trading_luck_score', 'N/A')}\n"
-                f"- Revenue: $0.01 USDC"
-            )
-            print(f"[Seller] dailyLuck delivered! Score: {result.get('trading_luck_score')}")
-            return deliverable
-
-        # ===== deepLuck 처리 =====
+            service_key = "dailyLuck"
+            revenue = "$0.01 USDC"
         elif 'deepLuck' in str(service_name) or 'birth_date' in str(requirement):
-            birth_date = requirement.get('birth_date', '1990-01-01')
-            birth_time = requirement.get('birth_time', '12:00')
-            print(f"[Seller] Processing deepLuck for: {birth_date} {birth_time}")
-
-            result = _call_deep_luck(birth_date, birth_time)
-
-            if result:
-                deliverable = json.dumps({
-                    "deep_report": json.dumps({
-                        "luck_score": result.get("trading_luck_score", 0),
-                        "favorable_sectors": result.get("favorable_sectors", []),
-                        "risk_level": result.get("volatility_index", "UNKNOWN"),
-                        "strategy": result.get("market_sentiment", "NEUTRAL"),
-                        "wealth_opportunity": result.get("wealth_opportunity", "LOW"),
-                        "birth_date": birth_date,
-                        "birth_time": birth_time,
-                        "provider": "Trinity Agent - Saju Eastern Metaphysics"
-                    })
-                })
-            else:
-                deliverable = json.dumps({"deep_report": json.dumps({"error": "Service temporarily unavailable"})})
-
-            _send_telegram(
-                f"[SALE] <b>deepLuck Sold!</b>\n"
-                f"- Job ID: {job_id}\n"
-                f"- Birth: {birth_date} {birth_time}\n"
-                f"- Score: {result.get('trading_luck_score', 'N/A')}\n"
-                f"- Revenue: $0.50 USDC"
-            )
-            print(f"[Seller] deepLuck delivered!")
-            return deliverable
-
+            service_key = "deepLuck"
+            revenue = "$0.50 USDC"
         else:
             print(f"[Seller] Unknown service: {service_name}")
             return json.dumps({"error": f"Unknown service: {service_name}"})
+
+        print(f"[Seller] Processing {service_key}...")
+        result = _call_handler(service_key, requirement)
+
+        if "error" not in result:
+            _send_telegram(
+                f"💰 [SALE] <b>{service_key} Sold!</b>\n"
+                f"- Job ID: {job_id}\n"
+                f"- Score: {result.get('trading_luck_score', 'N/A')}\n"
+                f"- Sectors: {result.get('favorable_sectors', [])}\n"
+                f"- Strategy: {result.get('strategy', 'N/A')}\n"
+                f"- Revenue: {revenue}"
+            )
+            print(f"[Seller] {service_key} delivered! Score: {result.get('trading_luck_score')}")
+        else:
+            print(f"[Seller] Handler returned error: {result}")
+
+        return json.dumps(result)
 
     except Exception as e:
         print(f"[Seller] Error processing task: {e}")
