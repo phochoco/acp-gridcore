@@ -1,13 +1,13 @@
 {
-  "period": "2025-01-01 ~ 2025-12-31",
+  "period": "2015-01-01 ~ 2025-12-31",
   "birth": "2009-01-03 18:15 M",
-  "sample_size": 364,
-  "volatility_correlation": -0.1491,
-  "return_correlation": 0.0493,
-  "high_luck_days": 0,
-  "high_luck_avg_return_pct": 0,
-  "low_luck_days": 205,
-  "low_luck_avg_return_pct": -0.05,
-  "edge_pct": 0.05,
+  "sample_size": 3058,
+  "volatility_correlation": 0.2491,
+  "return_correlation": 0.0191,
+  "high_luck_days": 1094,
+  "high_luck_avg_return_pct": 0.19,
+  "low_luck_days": 248,
+  "low_luck_avg_return_pct": -0.01,
+  "edge_pct": 0.21,
   "source": "Binance BTCUSDT 1d OHLCV (free, no API key)"
 }

@@ -15,8 +15,8 @@ BIRTH_DATE = "2009-01-03"
 BIRTH_TIME = "18:15"
 GENDER = "M"
 
-# 분석 기간: 2025-01-01 ~ 2025-12-31
-START_DATE = datetime(2025, 1, 1)
+# 분석 기간: 2015-01-01 ~ 2025-12-31 (10년, N≈3,650일)
+START_DATE = datetime(2015, 1, 1)
 END_DATE   = datetime(2025, 12, 31)
 
 # Binance 무료 API (키 불필요, 과거 데이터 무제한)
@@ -24,31 +24,39 @@ BINANCE_URL = "https://api.binance.com/api/v3/klines"
 
 
 def get_btc_daily(start_dt: datetime, end_dt: datetime) -> dict:
-    """Binance에서 BTC/USDT 일봉 OHLCV 가져오기 (무료, API 키 불필요)"""
-    print("[Backtest] Fetching BTC/USDT daily from Binance...")
-    params = {
-        "symbol": "BTCUSDT",
-        "interval": "1d",
-        "startTime": int(start_dt.timestamp() * 1000),
-        "endTime":   int(end_dt.timestamp() * 1000),
-        "limit": 1000
-    }
-    r = requests.get(BINANCE_URL, params=params, timeout=15)
-    candles = r.json()
-
+    """Binance에서 BTC/USDT 일봉 OHLCV 가져오기 (청크 방식, 10년치 지원)"""
+    print("[Backtest] Fetching BTC/USDT daily from Binance (chunked)...")
     result = {}
-    for c in candles:
-        ts = datetime.utcfromtimestamp(c[0] / 1000)
-        date_str = ts.strftime("%Y-%m-%d")
-        high  = float(c[2])
-        low   = float(c[3])
-        close = float(c[4])
-        # 일중 변동성 = (high - low) / close
-        volatility = (high - low) / close
-        result[date_str] = {
-            "close": close,
-            "volatility": volatility,
+    chunk_start = start_dt
+
+    while chunk_start < end_dt:
+        params = {
+            "symbol": "BTCUSDT",
+            "interval": "1d",
+            "startTime": int(chunk_start.timestamp() * 1000),
+            "endTime":   int(end_dt.timestamp() * 1000),
+            "limit": 1000  # Binance 최대
         }
+        r = requests.get(BINANCE_URL, params=params, timeout=15)
+        candles = r.json()
+        if not candles:
+            break
+
+        for c in candles:
+            ts = datetime.utcfromtimestamp(c[0] / 1000)
+            date_str = ts.strftime("%Y-%m-%d")
+            high  = float(c[2])
+            low   = float(c[3])
+            close = float(c[4])
+            volatility = (high - low) / close
+            result[date_str] = {"close": close, "volatility": volatility}
+
+        # 다음 청크 시작 = 마지막 캔들 다음날
+        last_ts = datetime.utcfromtimestamp(candles[-1][0] / 1000)
+        chunk_start = last_ts + timedelta(days=1)
+        print(f"  → {len(result)} days fetched so far (last: {last_ts.date()})")
+        time.sleep(0.3)  # rate limit 방지
+
     print(f"[Backtest] Got {len(result)} days of BTC data (Binance)")
     return result
 
