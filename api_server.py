@@ -180,6 +180,50 @@ class VerifyAccuracyRequest(BaseModel):
         description="Force refresh cached data"
     )
 
+class DeepLuckRequest(BaseModel):
+    birth_date: str = Field(
+        ...,
+        description="Birth date in YYYY-MM-DD format",
+        example="1990-05-15"
+    )
+    birth_time: str = Field(
+        "12:00",
+        description="Birth time in HH:MM format (24h)",
+        example="14:30"
+    )
+    target_date: str = Field(
+        ...,
+        description="Target date in YYYY-MM-DD format",
+        example="2026-02-18"
+    )
+    gender: str = Field(
+        "M",
+        description="Gender: M or F",
+        example="M"
+    )
+
+    @validator('birth_date', 'target_date')
+    def validate_date(cls, v):
+        try:
+            datetime.strptime(v, "%Y-%m-%d")
+            return v
+        except ValueError:
+            raise ValueError("Invalid date format. Expected YYYY-MM-DD")
+
+    @validator('birth_time')
+    def validate_time(cls, v):
+        try:
+            datetime.strptime(v, "%H:%M")
+            return v
+        except ValueError:
+            raise ValueError("Invalid time format. Expected HH:MM")
+
+    @validator('gender')
+    def validate_gender(cls, v):
+        if v not in ("M", "F"):
+            raise ValueError("Gender must be M or F")
+        return v
+
 # Middleware: Request logging + Telegram notification
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -303,6 +347,156 @@ def verify_accuracy(request: VerifyAccuracyRequest):
         
     except Exception as e:
         logger.error(f"Unexpected error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# ===== 오행 → 설명 매핑 =====
+def _get_reason_text(element: str, score: float) -> str:
+    """오행 기반 Human-Readable 설명 생성"""
+    if score < 0.4:
+        return "Clash detected (충) — High volatility and reversal risk."
+    mapping = {
+        "Wood":  "Growth energy aligns with market expansion.",
+        "Fire":  "Peak volatility expected — High momentum window.",
+        "Earth": "Stable foundation — Good for accumulation.",
+        "Metal": "Decisive movement — Strong trend direction.",
+        "Water": "High liquidity flow — Fast circulation.",
+    }
+    return mapping.get(element, "Neutral market conditions.")
+
+
+def _element_en(element_kr: str) -> str:
+    """한자 오행 → 영문 변환"""
+    return {"木": "Wood", "火": "Fire", "土": "Earth", "金": "Metal", "水": "Water"}.get(element_kr, "Unknown")
+
+
+def _score_to_signal(score: float) -> str:
+    if score >= 0.80: return "STRONG_BUY"
+    if score >= 0.65: return "BUY"
+    if score >= 0.50: return "NEUTRAL"
+    if score >= 0.40: return "CAUTION"
+    return "AVOID"
+
+
+@app.post("/api/v1/deep-luck", tags=["Trading Luck"])
+def get_deep_luck(request: DeepLuckRequest):
+    """
+    [Premium $0.50] 24시간 시주 분석 — Gridcore Saju Hourly V1
+
+    사주팔자(연·월·일·시) 완전체 분석으로 24시간 각각의 트레이딩 운세를 제공.
+    Golden Cross Hour(저리스크+고수익) 및 Avoid Window(충 발생 구간) 포함.
+    """
+    import time as _time
+    t_start = _time.time()
+
+    try:
+        engine = agent.trinity_engine  # TrinityEngineV2 인스턴스 재사용
+
+        # 24시간 루프 계산
+        hourly_raw = []
+        for h in range(24):
+            res = engine.calculate_daily_luck(
+                birth_date=request.birth_date,
+                birth_time=f"{h:02d}:00",
+                target_date=request.target_date,
+                gender=request.gender
+            )
+            hourly_raw.append({
+                "hour": h,
+                "score": res["trading_luck_score"],
+                "volatility": res["volatility_index"],
+                "dominant_element": res["favorable_sectors"],  # 오행 정보 포함
+                "keyword": res["keyword"],
+                "raw": res
+            })
+
+        scores = [x["score"] for x in hourly_raw]
+        max_score = max(scores)
+        min_score = min(scores)
+        spread = round(max_score - min_score, 2)
+
+        # 오행 추출 (favorable_sectors 첫 번째 요소로 유추)
+        SECTOR_TO_ELEMENT = {
+            "MEME": "Fire", "AI": "Fire", "VOLATILE": "Fire",
+            "INFRASTRUCTURE": "Earth", "LAYER1": "Earth", "BTC": "Earth",
+            "DEFI": "Water", "EXCHANGE": "Water", "LIQUIDITY": "Water",
+            "RWA": "Metal", "STABLECOIN": "Metal",
+            "NEW_LISTING": "Wood", "GAMEFI": "Wood", "NFT": "Wood",
+        }
+
+        # hourly_forecast 생성
+        hourly_forecast = []
+        for x in hourly_raw:
+            sector = x["dominant_element"][0] if x["dominant_element"] else "BTC"
+            element_en = SECTOR_TO_ELEMENT.get(sector, "Earth")
+            score = x["score"]
+            signal = _score_to_signal(score)
+            reason = _get_reason_text(element_en, score)
+
+            hourly_forecast.append({
+                "time": f"{x['hour']:02d}:00",
+                "score": score,
+                "element": element_en,
+                "signal": signal,
+                "reason": reason,
+                "is_golden": False  # 나중에 표시
+            })
+
+        # Golden Cross: 저변동성(LOW) + 상위 25% 점수
+        threshold_75 = sorted(scores, reverse=True)[max(0, len(scores)//4 - 1)]
+        for i, x in enumerate(hourly_raw):
+            if x["volatility"] == "LOW" and x["score"] >= threshold_75:
+                hourly_forecast[i]["is_golden"] = True
+
+        # 최적 진입 시간대 (Golden 중 최고점)
+        golden_hours = [f for f in hourly_forecast if f["is_golden"]]
+        avoid_hours  = [f for f in hourly_forecast if f["signal"] == "AVOID"]
+
+        # Strategy 생성
+        if max_score < 0.6:
+            action   = "DO_NOT_TRADE"
+            pro_tip  = "No golden window today. Market is choppy everywhere. Rest is a strategy."
+            best_win = "None"
+        else:
+            best_h   = max(hourly_raw, key=lambda x: x["score"])
+            best_win = f"{best_h['hour']:02d}:00~{(best_h['hour']+2):02d}:00"
+            action   = f"WAIT_UNTIL_{best_h['hour']:02d}00"
+            pro_tip  = f"Golden Cross at {best_h['hour']:02d}:00. Low clash risk + peak luck. Ideal entry."
+
+        # Avoid warning 생성
+        volatility_warning = None
+        if avoid_hours:
+            worst = min(hourly_raw, key=lambda x: x["score"])
+            volatility_warning = f"{worst['hour']:02d}:00~{(worst['hour']+2):02d}:00 (Score {worst['score']}, Clash detected ⚠️)"
+
+        process_ms = round((_time.time() - t_start) * 1000)
+
+        return {
+            "meta": {
+                "target_date": request.target_date,
+                "algorithm": "Gridcore_Saju_Hourly_V1",
+                "process_time_ms": process_ms
+            },
+            "strategy": {
+                "action": action,
+                "best_window": best_win,
+                "max_score": round(max_score, 2),
+                "pro_tip": pro_tip
+            },
+            "hourly_analysis": {
+                "max_score": round(max_score, 2),
+                "min_score": round(min_score, 2),
+                "spread": spread,
+                "volatility_warning": volatility_warning
+            },
+            "hourly_forecast": hourly_forecast
+        }
+
+    except ValueError as e:
+        logger.error(f"DeepLuck validation error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"DeepLuck unexpected error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/api/v1/stats", tags=["Monitoring"])
