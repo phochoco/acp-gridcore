@@ -15,6 +15,8 @@ load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "***REDACTED_TELEGRAM***")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "1629086047")
+AGENT_WALLET = os.getenv("BUYER_AGENT_WALLET_ADDRESS", "0xaC44D4C2De4d3b49844ac4B3500Ab49ad57b2dEB")
+BASESCAN_API_KEY = os.getenv("BASESCAN_API_KEY", "")
 SALES_LOG_PATH = os.path.join(os.path.dirname(__file__), "sales_log.json")
 
 # sales_log.json 동시 접근 보호
@@ -153,11 +155,46 @@ def _cmd_status(chat_id: str):
     )
 
 
+def _cmd_wallet(chat_id: str):
+    """우리 에이전트 지갑 잔액 및 정보 조회"""
+    try:
+        # BaseScan API로 잔액 조회
+        r = requests.get(
+            "https://api.basescan.org/api",
+            params={
+                "module": "account",
+                "action": "balance",
+                "address": AGENT_WALLET,
+                "tag": "latest",
+                "apikey": BASESCAN_API_KEY
+            },
+            timeout=10
+        )
+        data = r.json()
+        if data.get("status") == "1":
+            balance_eth = int(data["result"]) / 1e18
+            balance_str = f"{balance_eth:.6f} ETH"
+        else:
+            balance_str = "조회 실패"
+    except Exception:
+        balance_str = "조회 실패"
+
+    log = load_sales_log()
+    _send(chat_id,
+        f"👛 <b>Trinity Agent Wallet</b>\n\n"
+        f"<b>Address:</b>\n<code>{AGENT_WALLET}</code>\n\n"
+        f"<b>Balance:</b> {balance_str}\n"
+        f"<b>Total Revenue:</b> ${log.get('total_revenue_usdc', 0.0):.4f} USDC\n\n"
+        f"<a href='https://basescan.org/address/{AGENT_WALLET}'>🔗 View on BaseScan</a>"
+    )
+
+
 def _cmd_help(chat_id: str):
     _send(chat_id,
         "🤖 <b>Trinity Bot Commands</b>\n\n"
         "/sales — 전체 판매 내역 및 수익\n"
         "/last — 마지막 구매자 정보\n"
+        "/wallet — 내 지갑 잔액 확인\n"
         "/status — 서비스 상태 확인\n"
         "/help — 이 메시지"
     )
@@ -166,6 +203,7 @@ def _cmd_help(chat_id: str):
 COMMANDS = {
     "/sales":  _cmd_sales,
     "/last":   _cmd_last,
+    "/wallet": _cmd_wallet,
     "/status": _cmd_status,
     "/help":   _cmd_help,
 }
