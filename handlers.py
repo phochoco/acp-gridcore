@@ -10,6 +10,7 @@ JSON 응답 스키마 v2:
 - base_score 명시로 raw_score 정합성 확보
 """
 import json
+import re
 from datetime import datetime, timezone
 from typing import Union
 
@@ -54,10 +55,11 @@ KEYWORD_TO_STRATEGY = {
     "STRONG_BEARISH": "DEFENSIVE",
 }
 
-# volatility_index → volatility Enum (LOW/HIGH)
+# volatility_index → volatility Enum (LOW/MEDIUM/HIGH)
 VOLATILITY_MAP = {
-    "LOW":  "LOW",
-    "HIGH": "HIGH",
+    "LOW":    "LOW",
+    "MEDIUM": "MEDIUM",
+    "HIGH":   "HIGH",
 }
 
 # luck_score → risk_level Enum (LOW_RISK/MED_RISK/HIGH_RISK)
@@ -132,23 +134,26 @@ def _build_response(engine_result: dict, input_echo: dict) -> dict:
 
 def _extract_metrics(breakdown: list) -> dict:
     """
-    breakdown 문자열 리스트에서 수치 추출.
+    breakdown 문자열 리스트에서 수치 추출 (regex 기반 방어적 파싱).
     예: "Grand Cycle (Daewoon): +19.5pts" → major_luck: 19.5
+    항목별 독립 try/except — 하나 실패해도 나머지 파싱 계속.
     """
     metrics = {"major_luck": 0.0, "annual_luck": 0.0, "harmony": 0.0}
-    try:
-        for item in breakdown:
-            if "Daewoon" in item or "Grand Cycle" in item:
-                val = float(item.split(":")[1].replace("pts", "").strip())
+    for item in breakdown:
+        try:
+            match = re.search(r'([+-]?\d+(?:\.\d+)?)', item)
+            if not match:
+                continue
+            val = float(match.group(1))
+            item_lower = item.lower()
+            if "daewoon" in item_lower or "grand cycle" in item_lower:
                 metrics["major_luck"] = val
-            elif "Seun" in item or "Annual Cycle" in item:
-                val = float(item.split(":")[1].replace("pts", "").strip())
+            elif "seun" in item_lower or "annual cycle" in item_lower:
                 metrics["annual_luck"] = val
-            elif "Interaction" in item or "Clash" in item or "Harmony" in item:
-                val = float(item.split(":")[1].replace("pts", "").strip())
+            elif any(k in item_lower for k in ["interaction", "clash", "harmony"]):
                 metrics["harmony"] = val
-    except Exception:
-        pass
+        except Exception:
+            continue
     return metrics
 
 
