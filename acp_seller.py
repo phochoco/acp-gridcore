@@ -84,7 +84,7 @@ def _safe_parse_requirement(raw) -> dict:
     return {}
 
 
-def on_new_task(task) -> str:
+def on_new_task(task, memo_to_sign=None) -> str:
     """
     ACP 새 주문 수신 콜백
     다른 에이전트가 Trinity 서비스를 구매하면 자동 호출됨
