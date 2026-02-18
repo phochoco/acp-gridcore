@@ -403,18 +403,18 @@ class TrinityEngineV2:
         # 1. 대운 점수 (±30점, 천간 30% + 지지 70%)
         daewoon_score = self._calculate_daewoon_score_v2(saju, target_year)
         score += daewoon_score
-        breakdown.append(f"대운: {daewoon_score:+.1f}점")
+        breakdown.append(f"Grand Cycle (Daewoon): {daewoon_score:+.1f}pts")
         
         # 2. 세운 점수 (±20점, 대운의 2/3 영향력)
         seun_score = self._calculate_seun_score_v2(saju, target_year)
         score += seun_score
-        breakdown.append(f"세운: {seun_score:+.1f}점")
+        breakdown.append(f"Annual Cycle (Seun): {seun_score:+.1f}pts")
         
         # 3. 상호작용 점수 (±10점)
         interaction_score = self._calculate_interaction_score(saju)
         score += interaction_score
         if interaction_score != 0:
-            breakdown.append(f"상호작용: {interaction_score:+d}점")
+            breakdown.append(f"Interaction (Clash/Harmony): {interaction_score:+d}pts")
         
         # 최종 점수 (10-95 범위)
         final_score = max(10, min(95, round(score)))
