@@ -123,10 +123,20 @@ def on_new_task(job, memo_to_sign=None):
             job.reject(f"Unknown service: {service_name}")
             return
 
-        # ★ 협상 승인
+        # ★ 협상 승인 (nonce 충돌 시 재시도)
+        import time
         print(f"[Seller] Accepting job {job_id}...")
-        job.accept()
-        print(f"[Seller] Job {job_id} accepted!")
+        for attempt in range(3):
+            try:
+                time.sleep(3)  # nonce 정리 대기
+                job.accept()
+                print(f"[Seller] Job {job_id} accepted!")
+                break
+            except Exception as ae:
+                print(f"[Seller] accept() attempt {attempt+1} failed: {ae}")
+                if attempt == 2:
+                    raise ae
+                time.sleep(5)
 
         # ★ 엔진 계산
         print(f"[Seller] Processing {service_key}...")
