@@ -10,6 +10,11 @@ import asyncio
 import requests
 from datetime import datetime
 from typing import Dict, Optional
+from dotenv import load_dotenv
+
+# .env 파일 로드 (GAME_API_KEY 등)
+load_dotenv()
+
 
 # ===== 타겟 에이전트 설정 =====
 # ACP 마켓 상위 에이전트 (실제 확인된 Project ID)
