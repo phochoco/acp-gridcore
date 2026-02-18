@@ -6,8 +6,15 @@
   "return_correlation": 0.0191,
   "high_luck_days": 1094,
   "high_luck_avg_return_pct": 0.19,
+  "high_luck_win_rate_pct": 53.1,
+  "high_luck_mdd_pct": -89.55,
   "low_luck_days": 248,
   "low_luck_avg_return_pct": -0.01,
+  "low_luck_win_rate_pct": 50.0,
+  "low_luck_mdd_pct": -32.02,
+  "all_mdd_pct": -83.19,
+  "all_win_rate_pct": 51.4,
   "edge_pct": 0.21,
+  "win_rate_edge_pp": 3.1,
   "source": "Binance BTCUSDT 1d OHLCV (free, no API key)"
 }

@@ -104,6 +104,26 @@ def pearson_correlation(x: list, y: list) -> float:
     return num / (den_x * den_y)
 
 
+def calc_mdd(returns: list) -> float:
+    """최대 낙폭(MDD) 계산 — 누적 수익률 기준"""
+    cumulative = 1.0
+    peak = 1.0
+    mdd = 0.0
+    for r in returns:
+        cumulative *= (1 + r)
+        peak = max(peak, cumulative)
+        drawdown = (cumulative - peak) / peak
+        mdd = min(mdd, drawdown)
+    return mdd
+
+
+def calc_win_rate(returns: list) -> float:
+    """승률 계산 — 수익률 > 0인 날 비율"""
+    if not returns:
+        return 0.0
+    return sum(1 for r in returns if r > 0) / len(returns)
+
+
 def run_backtest():
     print("=" * 50)
     print("Trinity Backtest — Binance BTC vs Luck Score")
@@ -136,28 +156,43 @@ def run_backtest():
     corr_vol  = pearson_correlation(luck_list, vol_list)
     corr_ret  = pearson_correlation(luck_list[:-1], ret_list)
 
-    # 5. 고점수 날 수익률 분석
+    # 5. 고점수/저점수 날 수익률 분석
     high_luck_days = [i for i, v in enumerate(luck_list[:-1]) if v >= 0.7]
     low_luck_days  = [i for i, v in enumerate(luck_list[:-1]) if v < 0.4]
+    all_days       = list(range(len(ret_list)))
 
-    high_avg_ret = sum(ret_list[i] for i in high_luck_days) / len(high_luck_days) if high_luck_days else 0
-    low_avg_ret  = sum(ret_list[i] for i in low_luck_days) / len(low_luck_days) if low_luck_days else 0
+    high_rets = [ret_list[i] for i in high_luck_days]
+    low_rets  = [ret_list[i] for i in low_luck_days]
+
+    high_avg_ret = sum(high_rets) / len(high_rets) if high_rets else 0
+    low_avg_ret  = sum(low_rets)  / len(low_rets)  if low_rets  else 0
+
+    # MDD & 승률
+    high_mdd      = calc_mdd(high_rets)
+    high_win_rate = calc_win_rate(high_rets)
+    low_mdd       = calc_mdd(low_rets)
+    low_win_rate  = calc_win_rate(low_rets)
+    all_mdd       = calc_mdd(ret_list)
+    all_win_rate  = calc_win_rate(ret_list)
 
     # 6. 결과 출력
-    print("\n" + "=" * 50)
-    print("📊 BACKTEST RESULTS")
-    print("=" * 50)
+    print("\n" + "=" * 60)
+    print("📊 BACKTEST RESULTS — Trinity Engine v2 (Daewoon+Seun+Wolun+Ilun)")
+    print("=" * 60)
+    print(f"Period:                   {START_DATE.date()} ~ {END_DATE.date()}")
     print(f"Sample size (N):          {len(common_dates)} days")
     print(f"Volatility correlation:   {corr_vol:.4f}")
     print(f"Next-day return corr:     {corr_ret:.4f}")
-    print(f"")
-    print(f"luck_score >= 0.7 days:   {len(high_luck_days)}")
-    print(f"  → Avg next-day return:  {high_avg_ret*100:.2f}%")
-    print(f"luck_score < 0.4 days:    {len(low_luck_days)}")
-    print(f"  → Avg next-day return:  {low_avg_ret*100:.2f}%")
-    print(f"")
+    print()
+    print(f"{'Segment':<22} {'Days':>5} {'Avg Ret':>8} {'Win Rate':>9} {'MDD':>8}")
+    print("-" * 60)
+    print(f"{'luck >= 0.7 (High)':<22} {len(high_luck_days):>5} {high_avg_ret*100:>7.2f}% {high_win_rate*100:>8.1f}% {high_mdd*100:>7.2f}%")
+    print(f"{'luck < 0.4  (Low)':<22} {len(low_luck_days):>5}  {low_avg_ret*100:>7.2f}% {low_win_rate*100:>8.1f}%  {low_mdd*100:>7.2f}%")
+    print(f"{'All days (Baseline)':<22} {len(ret_list):>5} {sum(ret_list)/len(ret_list)*100:>7.2f}% {all_win_rate*100:>8.1f}% {all_mdd*100:>7.2f}%")
+    print("-" * 60)
     print(f"Edge (High - Low):        {(high_avg_ret - low_avg_ret)*100:.2f}%")
-    print("=" * 50)
+    print(f"Win Rate Edge:            {(high_win_rate - low_win_rate)*100:.1f}pp")
+    print("=" * 60)
 
     # 7. JSON 저장
     output = {
@@ -168,9 +203,16 @@ def run_backtest():
         "return_correlation": round(corr_ret, 4),
         "high_luck_days": len(high_luck_days),
         "high_luck_avg_return_pct": round(high_avg_ret * 100, 2),
+        "high_luck_win_rate_pct": round(high_win_rate * 100, 1),
+        "high_luck_mdd_pct": round(high_mdd * 100, 2),
         "low_luck_days": len(low_luck_days),
         "low_luck_avg_return_pct": round(low_avg_ret * 100, 2),
+        "low_luck_win_rate_pct": round(low_win_rate * 100, 1),
+        "low_luck_mdd_pct": round(low_mdd * 100, 2),
+        "all_mdd_pct": round(all_mdd * 100, 2),
+        "all_win_rate_pct": round(all_win_rate * 100, 1),
         "edge_pct": round((high_avg_ret - low_avg_ret) * 100, 2),
+        "win_rate_edge_pp": round((high_win_rate - low_win_rate) * 100, 1),
         "source": "Binance BTCUSDT 1d OHLCV (free, no API key)"
     }
     with open("backtest_result.json", "w") as f:
