@@ -203,9 +203,12 @@ def run_seller():
             "- Mode: SDK Callback (auto-deliver)"
         )
 
-        # ★ SDK run() — 내부에서 주문 수신 & deliver 자동 처리
-        print("[Seller] Starting SDK run loop...")
-        acp_client.run()
+        # ★ SDK 콜백이 별도 스레드에서 자동 처리
+        # 메인 스레드는 살아있기만 하면 됨
+        import time
+        print("[Seller] SDK callback mode active. Waiting for jobs...")
+        while True:
+            time.sleep(1)
 
     except ImportError:
         print("[Seller] virtuals-acp not installed")
