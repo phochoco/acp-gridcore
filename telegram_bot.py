@@ -156,34 +156,48 @@ def _cmd_status(chat_id: str):
 
 
 def _cmd_wallet(chat_id: str):
-    """우리 에이전트 지갑 잔액 및 정보 조회"""
+    """우리 에이전트 지갑 잔액 및 정보 조회 (Base RPC)"""
+    BASE_RPC = "https://mainnet.base.org"
+    # USDC on Base contract
+    USDC_CONTRACT = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+
     try:
-        # BaseScan API로 잔액 조회
-        r = requests.get(
-            "https://api.basescan.org/api",
-            params={
-                "module": "account",
-                "action": "balance",
-                "address": AGENT_WALLET,
-                "tag": "latest",
-                "apikey": BASESCAN_API_KEY
-            },
-            timeout=10
-        )
-        data = r.json()
-        if data.get("status") == "1":
-            balance_eth = int(data["result"]) / 1e18
-            balance_str = f"{balance_eth:.6f} ETH"
-        else:
-            balance_str = "조회 실패"
+        # ETH 잔액 조회 (eth_getBalance)
+        r = requests.post(BASE_RPC, json={
+            "jsonrpc": "2.0",
+            "method": "eth_getBalance",
+            "params": [AGENT_WALLET, "latest"],
+            "id": 1
+        }, timeout=10)
+        eth_hex = r.json().get("result", "0x0")
+        eth_balance = int(eth_hex, 16) / 1e18
+        eth_str = f"{eth_balance:.6f} ETH"
     except Exception:
-        balance_str = "조회 실패"
+        eth_str = "조회 실패"
+
+    try:
+        # USDC 잔액 조회 (eth_call → balanceOf)
+        # balanceOf(address) = 0x70a08231 + address padded to 32 bytes
+        padded = AGENT_WALLET[2:].lower().zfill(64)
+        data = "0x70a08231" + padded
+        r2 = requests.post(BASE_RPC, json={
+            "jsonrpc": "2.0",
+            "method": "eth_call",
+            "params": [{"to": USDC_CONTRACT, "data": data}, "latest"],
+            "id": 2
+        }, timeout=10)
+        usdc_hex = r2.json().get("result", "0x0")
+        usdc_balance = int(usdc_hex, 16) / 1e6  # USDC는 6 decimals
+        usdc_str = f"{usdc_balance:.4f} USDC"
+    except Exception:
+        usdc_str = "조회 실패"
 
     log = load_sales_log()
     _send(chat_id,
         f"👛 <b>Trinity Agent Wallet</b>\n\n"
         f"<b>Address:</b>\n<code>{AGENT_WALLET}</code>\n\n"
-        f"<b>Balance:</b> {balance_str}\n"
+        f"<b>ETH Balance:</b> {eth_str}\n"
+        f"<b>USDC Balance:</b> {usdc_str}\n"
         f"<b>Total Revenue:</b> ${log.get('total_revenue_usdc', 0.0):.4f} USDC\n\n"
         f"<a href='https://basescan.org/address/{AGENT_WALLET}'>🔗 View on BaseScan</a>"
     )
