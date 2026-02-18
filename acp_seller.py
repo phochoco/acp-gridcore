@@ -1,10 +1,18 @@
 """
 Trinity ACP Seller — 서비스 판매자 모듈
-다른 에이전트가 dailyLuck / deepLuck 서비스를 구매하면 자동 처리
-virtuals-acp SDK 콜백 방식 + handlers.py 직접 호출
 
-★ 구조: SDK가 on_new_task(job, memo_to_sign)를 호출 → return값을 SDK가 deliver
-   폴링 루프 없음 — SDK 내부에서 자동 처리
+★ 올바른 ACP Job 처리 흐름:
+  1. on_new_task(job, memo_to_sign)
+     - next_phase = NEGOTIATION
+     - job.accept() 호출 → 협상 승인
+     - 엔진 계산 후 결과를 job_results[job.id]에 저장
+     - [SALE] 텔레그램 알림
+
+  2. on_evaluate(job)
+     - 구매자가 결제 완료 후 호출됨
+     - next_phase = EVALUATION
+     - job_results에서 결과 꺼내서 job.deliver() 호출
+     - job.evaluate(True) 호출
 """
 import os
 import json
@@ -37,6 +45,9 @@ except Exception as e:
     BOT_AVAILABLE = False
     print(f"[Seller] Bot/Profiler load failed: {e}")
 
+# ★ job_id → 계산 결과 저장 (on_new_task → on_evaluate 간 공유)
+job_results = {}
+
 
 def _send_telegram(message: str):
     try:
@@ -67,10 +78,6 @@ def _call_handler(service: str, requirement: dict) -> dict:
 
 
 def _safe_parse_requirement(raw) -> dict:
-    """
-    requirement를 안전하게 dict로 변환.
-    None, 빈 문자열, JSON 문자열, dict 등 모든 형태 처리.
-    """
     if not raw:
         return {}
     if isinstance(raw, dict):
@@ -87,22 +94,23 @@ def _safe_parse_requirement(raw) -> dict:
     return {}
 
 
-def on_new_task(task, memo_to_sign=None) -> str:
+def on_new_task(job, memo_to_sign=None):
     """
-    ACP 새 주문 수신 콜백
-    SDK가 자동 호출 → return값을 SDK가 알아서 deliver함
-    ★ 이 함수에서 job.deliver()를 직접 호출하면 안 됨!
+    ★ STEP 1: 새 주문 수신
+    - job.accept() 로 협상 승인
+    - 엔진 계산 후 결과를 job_results에 저장
+    - deliver는 하지 않음 (구매자 결제 후 on_evaluate에서 처리)
     """
     try:
-        job_id = getattr(task, 'id', 'unknown')
-        service_name = str(getattr(task, 'service_name', '') or getattr(task, 'name', '') or '')
-        requirement = _safe_parse_requirement(getattr(task, 'requirement', None))
+        job_id = job.id
+        service_name = str(job.name or '')
+        requirement = _safe_parse_requirement(job.requirement)
 
-        print(f"\n[Seller] New job received! ID: {job_id}, Service: {service_name}")
-        print(f"[Seller] Requirement (parsed): {requirement}")
-        print(f"[Seller] memo_to_sign: {memo_to_sign}")
+        print(f"\n[Seller] ★ STEP1: New job! ID={job_id}, Service={service_name}")
+        print(f"[Seller] Requirement: {requirement}")
+        print(f"[Seller] Phase: {job.phase}, memo next_phase: {memo_to_sign.next_phase if memo_to_sign else 'N/A'}")
 
-        # ===== 서비스 라우팅 (대소문자 무시) =====
+        # 서비스 라우팅
         service_lower = service_name.lower()
         if 'dailyluck' in service_lower or 'target_date' in requirement:
             service_key = "dailyLuck"
@@ -111,54 +119,120 @@ def on_new_task(task, memo_to_sign=None) -> str:
             service_key = "deepLuck"
             revenue_val = 0.50
         else:
-            print(f"[Seller] Unknown service: {service_name}, requirement: {requirement}")
-            return json.dumps({"error": f"Unknown service: {service_name}"})
+            print(f"[Seller] Unknown service: {service_name}")
+            job.reject(f"Unknown service: {service_name}")
+            return
 
+        # ★ 협상 승인
+        print(f"[Seller] Accepting job {job_id}...")
+        job.accept()
+        print(f"[Seller] Job {job_id} accepted!")
+
+        # ★ 엔진 계산
         print(f"[Seller] Processing {service_key}...")
         result = _call_handler(service_key, requirement)
+        print(f"[Seller] Engine result: {result.get('sentiment', result)}")
+
+        # ★ 결과 저장 (on_evaluate에서 사용)
+        job_results[job_id] = {
+            "result": result,
+            "service_key": service_key,
+            "revenue_val": revenue_val,
+            "buyer_addr": job.client_address or '',
+        }
 
         if "error" not in result:
-            buyer_addr = getattr(task, 'client_address', '') or getattr(task, 'buyer_address', '') or ''
-            # 1. 판매 내역 저장
-            if BOT_AVAILABLE:
-                save_sale(job_id, service_key, buyer_addr, revenue_val)
-            # 2. 텔레그램 판매 알림
+            # 텔레그램 판매 알림
             _send_telegram(
                 f"💰 [SALE] <b>{service_key} Sold!</b>\n"
                 f"- Job ID: {job_id}\n"
                 f"- Sentiment: {result.get('sentiment', 'N/A')}\n"
                 f"- Action: {result.get('action_signal', 'N/A')} / {result.get('strategy_tag', 'N/A')}\n"
                 f"- Sectors: {result.get('sectors', [])}\n"
-                f"- Revenue: ${revenue_val} USDC"
+                f"- Revenue: ${revenue_val} USDC\n"
+                f"- Status: Waiting for buyer payment..."
             )
-            # 3. 구매자 뒤조사 (deepLuck만)
-            if BOT_AVAILABLE and buyer_addr and service_key == "deepLuck":
-                from telegram_bot import get_buyer_purchase_count
-                count = get_buyer_purchase_count(buyer_addr)
-                analyze_buyer_async(buyer_addr, service_key, job_id, count)
-
-            print(f"[Seller] {service_key} done! Sentiment: {result.get('sentiment')}")
+            # 판매 내역 저장
+            if BOT_AVAILABLE:
+                save_sale(job_id, service_key, job.client_address or '', revenue_val)
         else:
-            print(f"[Seller] Handler returned error: {result}")
-            _send_telegram(
-                f"⚠️ [Seller] 처리 오류\n"
-                f"- Job ID: {job_id}\n"
-                f"- Error: {result.get('error', 'unknown')}"
-            )
-
-        # ★ SDK가 이 return값을 받아서 자동으로 deliver함
-        return json.dumps(result)
+            print(f"[Seller] Handler error: {result}")
 
     except Exception as e:
-        print(f"[Seller] Error processing task: {e}")
-        return json.dumps({"error": str(e)})
+        print(f"[Seller] on_new_task error: {e}")
+        _send_telegram(f"⚠️ [Seller] on_new_task 오류\n- Job ID: {getattr(job, 'id', '?')}\n- Error: {str(e)[:200]}")
+
+
+def on_evaluate(job):
+    """
+    ★ STEP 2: 구매자 결제 완료 후 호출
+    - job_results에서 계산 결과 꺼내서 job.deliver()
+    - job.evaluate(True) 로 완료 처리
+    """
+    try:
+        job_id = job.id
+        print(f"\n[Seller] ★ STEP2: Evaluate job! ID={job_id}, Phase={job.phase}")
+        print(f"[Seller] Latest memo next_phase: {job.latest_memo.next_phase if job.latest_memo else 'N/A'}")
+
+        # 저장된 결과 꺼내기
+        stored = job_results.get(job_id)
+        if not stored:
+            print(f"[Seller] No stored result for job {job_id}, computing now...")
+            # 결과가 없으면 다시 계산
+            service_name = str(job.name or '')
+            requirement = _safe_parse_requirement(job.requirement)
+            service_lower = service_name.lower()
+            if 'dailyluck' in service_lower or 'target_date' in requirement:
+                service_key = "dailyLuck"
+                revenue_val = 0.01
+            elif 'deepluck' in service_lower or 'birth_date' in requirement:
+                service_key = "deepLuck"
+                revenue_val = 0.50
+            else:
+                print(f"[Seller] Unknown service in evaluate: {service_name}")
+                job.evaluate(False, "Unknown service")
+                return
+            result = _call_handler(service_key, requirement)
+            stored = {"result": result, "service_key": service_key, "revenue_val": revenue_val, "buyer_addr": job.client_address or ''}
+
+        result = stored["result"]
+        service_key = stored["service_key"]
+        revenue_val = stored["revenue_val"]
+        buyer_addr = stored["buyer_addr"]
+
+        # ★ 결과 전달
+        print(f"[Seller] Delivering result for job {job_id}...")
+        job.deliver(json.dumps(result))
+        print(f"[Seller] Job {job_id} delivered!")
+
+        # ★ 평가 완료
+        job.evaluate(True, f"Trinity {service_key} delivered successfully")
+        print(f"[Seller] Job {job_id} evaluated!")
+
+        # 텔레그램 완료 알림
+        _send_telegram(
+            f"✅ [DELIVERED] <b>{service_key} Complete!</b>\n"
+            f"- Job ID: {job_id}\n"
+            f"- Sentiment: {result.get('sentiment', 'N/A')}\n"
+            f"- Revenue: ${revenue_val} USDC"
+        )
+
+        # deepLuck 구매자 뒤조사
+        if BOT_AVAILABLE and buyer_addr and service_key == "deepLuck":
+            from telegram_bot import get_buyer_purchase_count
+            count = get_buyer_purchase_count(buyer_addr)
+            analyze_buyer_async(buyer_addr, service_key, job_id, count)
+
+        # 메모리 정리
+        job_results.pop(job_id, None)
+
+    except Exception as e:
+        print(f"[Seller] on_evaluate error: {e}")
+        _send_telegram(f"⚠️ [Seller] on_evaluate 오류\n- Job ID: {getattr(job, 'id', '?')}\n- Error: {str(e)[:200]}")
 
 
 def run_seller():
-    """
-    ACP Seller 서비스 시작
-    SDK 콜백 방식으로 주문 자동 처리 (폴링 루프 없음)
-    """
+    """ACP Seller 서비스 시작"""
     try:
         from virtuals_acp.client import VirtualsACP
         from virtuals_acp.contract_clients.contract_client_v2 import ACPContractClientV2
@@ -175,9 +249,8 @@ def run_seller():
         print(f"\n[Seller] Starting Trinity ACP Seller Service...")
         print(f"[Seller] Agent Wallet: {agent_wallet}")
         print(f"[Seller] Services: dailyLuck ($0.01), deepLuck ($0.50)")
-        print(f"[Seller] Waiting for purchase requests...\n")
+        print(f"[Seller] Flow: on_new_task(accept) → buyer pays → on_evaluate(deliver)\n")
 
-        # ★ SDK 콜백 방식: on_new_task를 콜백으로 등록
         acp_client = VirtualsACP(
             acp_contract_clients=ACPContractClientV2(
                 wallet_private_key=private_key,
@@ -185,10 +258,11 @@ def run_seller():
                 entity_id=entity_id,
                 config=BASE_MAINNET_ACP_X402_CONFIG_V2,
             ),
-            on_new_task=on_new_task
+            on_new_task=on_new_task,
+            on_evaluate=on_evaluate,
         )
 
-        # 텔레그램 봇 스레드 시작 (daemon=True)
+        # 텔레그램 봇 스레드 시작
         if BOT_AVAILABLE:
             bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
             bot_thread.start()
@@ -198,15 +272,13 @@ def run_seller():
             "[ONLINE] <b>Trinity Seller Service Started</b>\n"
             "- dailyLuck: $0.01 USDC\n"
             "- deepLuck: $0.50 USDC\n"
-            "- Buyer Profiler: ACTIVE\n"
-            "- Telegram Bot: /sales /last /status /help\n"
-            "- Mode: SDK Callback (auto-deliver)"
+            "- Flow: accept → pay → deliver\n"
+            "- Telegram Bot: /sales /last /status /help"
         )
 
-        # ★ SDK 콜백이 별도 스레드에서 자동 처리
-        # 메인 스레드는 살아있기만 하면 됨
+        # 메인 스레드 유지 (SDK 콜백은 별도 스레드에서 자동 처리)
         import time
-        print("[Seller] SDK callback mode active. Waiting for jobs...")
+        print("[Seller] Waiting for jobs (SDK callback mode)...")
         while True:
             time.sleep(1)
 
