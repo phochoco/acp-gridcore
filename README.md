@@ -273,34 +273,60 @@ else:
 
 ## 🎯 사용 예제
 
-### Python
+### 🚀 [추천] Virtuals GAME SDK 연동 (서버 설치 불필요)
+
+```python
+# Project ID만 있으면 즉시 연동 가능
+# Virtuals 플랫폼에서 Trinity_Alpha_Oracle에게 요청하면 자동 응답
+
+# Project ID: e8d1733f-9769-4590-bab0-776115e715a7
+# Virtuals 마켓플레이스에서 에이전트를 찾아 호출하세요
+```
+
+### 🔌 직접 REST API 호출
+
 ```python
 import requests
 
+BASE_URL = "http://15.165.210.0:8000"  # Trinity ACP Agent 서버
+
+# 오늘 운세 조회
 response = requests.post(
-    "http://localhost:8000/api/v1/daily-luck",
+    f"{BASE_URL}/api/v1/daily-luck",
     json={"target_date": "2026-02-20"}
 )
 
 data = response.json()
-print(f"Score: {data['trading_luck_score']}")
-print(f"Sectors: {data['favorable_sectors']}")
+
+# 봇 매매 판단 로직
+if data["trading_luck_score"] >= 0.7:
+    if "NEW_LISTING" in data["favorable_sectors"]:
+        bet_size = 1000  # 운세 좋으니 평소 2배
+    else:
+        bet_size = 500
+    execute_trade(bet_size)
 ```
 
 ### JavaScript
 ```javascript
-fetch('http://localhost:8000/api/v1/daily-luck', {
+const BASE_URL = "http://15.165.210.0:8000";
+
+fetch(`${BASE_URL}/api/v1/daily-luck`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({target_date: '2026-02-20'})
 })
 .then(res => res.json())
-.then(data => console.log(data));
+.then(data => {
+    if (data.trading_luck_score >= 0.7) {
+        console.log('Enter trade! Sectors:', data.favorable_sectors);
+    }
+});
 ```
 
 ### cURL
 ```bash
-curl -X POST http://localhost:8000/api/v1/daily-luck \
+curl -X POST http://15.165.210.0:8000/api/v1/daily-luck \
   -H "Content-Type: application/json" \
   -d '{"target_date": "2026-02-20"}'
 ```
@@ -326,16 +352,14 @@ curl -X POST http://localhost:8000/api/v1/daily-luck \
 
 ---
 
-## 💰 비즈니스 모델
+## 💰 Pricing
 
-### 수익 모델
-- **API 호출 가격**: $0.01/call
-- **월 목표**: 1,000 calls
-- **예상 수익**: $10/월 (₩13,000)
+| 플랜 | 가격 | 내용 |
+|------|------|------|
+| **Free** | $0 | 직접 API 호출 (rate limit 있음) |
+| **Per Call** | $0.01 / call | Virtuals 플랫폼 통해 결제 |
 
-### 비용
-- **VPS 서버**: $5/월 (₩6,500)
-- **순익**: ₩6,500/월
+> **Affordable Alpha**: RSI/MACD와 상관관계 없는 독립적 신호를 $0.01에 제공합니다.
 
 ---
 
