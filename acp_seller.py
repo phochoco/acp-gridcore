@@ -5,6 +5,7 @@ virtuals-acp SDK 폴링 방식 + handlers.py 직접 호출
 """
 import os
 import json
+import threading
 import requests
 from datetime import datetime
 from dotenv import load_dotenv
@@ -22,6 +23,16 @@ try:
 except Exception as e:
     HANDLERS_AVAILABLE = False
     print(f"[Seller] handlers.py load failed: {e}")
+
+# 텔레그램 봇 + 뒤조사 모듈 import
+try:
+    from telegram_bot import run_telegram_bot, save_sale
+    from buyer_profiler import analyze_buyer_async
+    BOT_AVAILABLE = True
+    print("[Seller] telegram_bot + buyer_profiler loaded")
+except Exception as e:
+    BOT_AVAILABLE = False
+    print(f"[Seller] Bot/Profiler load failed: {e}")
 
 
 def _send_telegram(message: str):
@@ -80,15 +91,30 @@ def on_new_task(task) -> str:
         result = _call_handler(service_key, requirement)
 
         if "error" not in result:
+            buyer_addr = getattr(task, 'client_address', '') or getattr(task, 'buyer_address', '')
+            revenue_val = 0.01 if service_key == "dailyLuck" else 0.50
+
+            # 1. 판매 내역 저장
+            if BOT_AVAILABLE:
+                save_sale(job_id, service_key, buyer_addr, revenue_val)
+
+            # 2. 텔레그램 판매 알림
             _send_telegram(
                 f"💰 [SALE] <b>{service_key} Sold!</b>\n"
                 f"- Job ID: {job_id}\n"
-                f"- Score: {result.get('trading_luck_score', 'N/A')}\n"
-                f"- Sectors: {result.get('favorable_sectors', [])}\n"
-                f"- Strategy: {result.get('strategy', 'N/A')}\n"
-                f"- Revenue: {revenue}"
+                f"- Sentiment: {result.get('sentiment', 'N/A')}\n"
+                f"- Action: {result.get('action_signal', 'N/A')} / {result.get('strategy_tag', 'N/A')}\n"
+                f"- Sectors: {result.get('sectors', [])}\n"
+                f"- Revenue: ${revenue_val} USDC"
             )
-            print(f"[Seller] {service_key} delivered! Score: {result.get('trading_luck_score')}")
+
+            # 3. 구매자 뒤조사 (비동기 실행 — deepLuck만)
+            if BOT_AVAILABLE and buyer_addr and service_key == "deepLuck":
+                from telegram_bot import get_buyer_purchase_count
+                count = get_buyer_purchase_count(buyer_addr)
+                analyze_buyer_async(buyer_addr, service_key, job_id, count)
+
+            print(f"[Seller] {service_key} delivered! Sentiment: {result.get('sentiment')}")
         else:
             print(f"[Seller] Handler returned error: {result}")
 
@@ -132,11 +158,19 @@ def run_seller():
             on_new_task=on_new_task  # 주문 수신 콜백
         )
 
+        # 텔레그램 봇 스레드 먼저 시작 (daemon=True)
+        if BOT_AVAILABLE:
+            bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
+            bot_thread.start()
+            print("[Seller] Telegram command bot started (daemon thread)")
+
         _send_telegram(
             "[ONLINE] <b>Trinity Seller Service Started</b>\n"
             "- dailyLuck: $0.01 USDC\n"
             "- deepLuck: $0.50 USDC\n"
-            "- Polling for purchase requests every 30s..."
+            "- Buyer Profiler: ACTIVE\n"
+            "- Telegram Bot: /sales /last /status /help\n"
+            "- Polling every 30s..."
         )
 
         # 폴링 루프 — 30초마다 미처리 주문 확인
