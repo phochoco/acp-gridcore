@@ -1,24 +1,23 @@
 """
 Trinity ACP Agent — Bot-to-Bot Marketing Module
-30분마다 타 에이전트 서비스를 호출하여 온체인 존재감 확보.
-응답 데이터를 교차검증 명분으로 활용.
+Type A: 30분마다 무료 핑 (HTTP 요청, 로그 존재감)
+Type B: 6시간마다 실제 ACP 온체인 결제 (virtuals-acp SDK)
 """
 import os
 import json
 import random
 import asyncio
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Optional
 from dotenv import load_dotenv
 
-# .env 파일 로드 (GAME_API_KEY 등)
+# .env 파일 로드
 load_dotenv()
 
 
 # ===== 타겟 에이전트 설정 =====
 # ACP 마켓 상위 에이전트 (실제 확인된 Project ID)
-# https://app.virtuals.io/acp/agent-details/{id}
 TARGET_AGENTS = [
     {
         "name": "Ethy AI",
@@ -52,7 +51,7 @@ TARGET_AGENTS = [
     },
 ]
 
-# 교차검증에 사용할 토큰 주소 목록 (매 사이클 다른 토큰 사용)
+# 교차검증에 사용할 토큰 주소 목록
 SAMPLE_TOKENS = [
     "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",  # WETH
     "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",  # WBTC
@@ -65,9 +64,13 @@ BASE_API_URL = "http://15.165.210.0:8000"
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "***REDACTED_TELEGRAM***")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "1629086047")
 
+# Type B 결제 주기 (6시간마다)
+TYPE_B_INTERVAL_HOURS = 6
+_last_type_b_time: Optional[datetime] = None
+
 
 def _send_telegram(message: str):
-    """텔레그램 알림 (선택적)"""
+    """텔레그램 알림"""
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         requests.post(url, json={
@@ -95,16 +98,14 @@ def _get_today_trinity_score() -> Optional[Dict]:
     return None
 
 
-def _call_target_agent(agent: Dict, token_address: str) -> Optional[Dict]:
+# ===== TYPE A: 무료 핑 (기존 방식) =====
+def _call_target_agent_free(agent: Dict, token_address: str) -> Optional[Dict]:
     """
-    타겟 에이전트 서비스 호출 (ACP HTTP API)
-    실제 ACP 프로토콜로 호출 — 트랜잭션 기록이 온체인에 남음
+    Type A: 타겟 에이전트 무료 핑
+    ACP API에 HTTP 요청 → 상대방 서버 로그에 Trinity 기록
     """
     try:
-        # ACP 마켓플레이스 API 엔드포인트
-        # 실제 ACP API 스펙에 맞게 조정 필요
         acp_api_url = "https://api.virtuals.io/api/acp/v1/request"
-        
         game_api_key = os.getenv("GAME_API_KEY", "")
         if not game_api_key:
             print("⚠️ GAME_API_KEY not set, skipping agent call")
@@ -118,35 +119,125 @@ def _call_target_agent(agent: Dict, token_address: str) -> Optional[Dict]:
                 "chain": "base"
             }
         }
-
         headers = {
             "Authorization": f"Bearer {game_api_key}",
             "Content-Type": "application/json"
         }
 
         response = requests.post(acp_api_url, json=payload, headers=headers, timeout=15)
-        
+
         if response.status_code in (200, 201, 202, 204):
-            # 204 = No Content (성공이지만 응답 본문 없음)
-            print(f"✅ Agent call success: HTTP {response.status_code}")
+            print(f"✅ [Type A] Agent ping success: HTTP {response.status_code}")
             try:
                 return response.json() if response.text else {"status": "success", "http_code": response.status_code}
             except:
                 return {"status": "success", "http_code": response.status_code}
         else:
-            print(f"⚠️ Agent call failed: {response.status_code} — {response.text[:100]}")
+            print(f"⚠️ [Type A] Agent ping failed: {response.status_code} — {response.text[:100]}")
             return None
 
-
     except Exception as e:
-        print(f"⚠️ Error calling {agent['name']}: {e}")
+        print(f"⚠️ [Type A] Error calling {agent['name']}: {e}")
         return None
 
 
-def _log_cross_validation(trinity_data: Dict, agent: Dict, agent_response: Optional[Dict]):
+# ===== TYPE B: 실제 ACP 온체인 결제 (virtuals-acp SDK) =====
+def _call_target_agent_paid(agent: Dict) -> Optional[Dict]:
+    """
+    Type B: 실제 ACP 온체인 결제
+    virtuals-acp SDK로 타겟 에이전트에게 $0.01 USDC 결제
+    6시간마다 1회 실행
+    """
+    try:
+        from virtuals_acp.client import VirtualsACP
+        from virtuals_acp import ACPContractClientV2
+        from virtuals_acp.config import BASE_MAINNET_ACP_X402_CONFIG_V2
+
+        private_key = os.getenv("WHITELISTED_WALLET_PRIVATE_KEY", "")
+        agent_wallet = os.getenv("BUYER_AGENT_WALLET_ADDRESS", "")
+        entity_id = int(os.getenv("BUYER_ENTITY_ID", "2"))
+
+        if not private_key or not agent_wallet:
+            print("⚠️ [Type B] Missing ACP credentials in .env")
+            return None
+
+        print(f"💳 [Type B] Initiating paid job with {agent['name']}...")
+
+        # ACP 클라이언트 초기화
+        acp_client = VirtualsACP(
+            acp_contract_clients=ACPContractClientV2(
+                wallet_private_key=private_key,
+                agent_wallet_address=agent_wallet,
+                entity_id=entity_id,
+                config=BASE_MAINNET_ACP_X402_CONFIG_V2,
+            )
+        )
+
+        # 타겟 에이전트 검색
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        service_requirement = (
+            f"Trinity Agent requesting {agent['service']} analysis. "
+            f"Date: {today_str}. "
+            f"Cross-validation with Eastern Metaphysics trading signals."
+        )
+
+        # 에이전트 검색 후 job 시작
+        relevant_agents = acp_client.browse_agents(agent["name"])
+
+        if not relevant_agents:
+            print(f"⚠️ [Type B] Agent '{agent['name']}' not found in ACP marketplace")
+            return None
+
+        chosen_agent = relevant_agents[0]
+
+        if not chosen_agent.offerings:
+            print(f"⚠️ [Type B] No offerings found for {agent['name']}")
+            return None
+
+        # 가장 저렴한 서비스 선택
+        chosen_offering = min(chosen_agent.offerings, key=lambda x: getattr(x, 'price', float('inf')))
+
+        # 만료 시간: 24시간 후
+        expired_at = datetime.now() + timedelta(hours=24)
+
+        # Job 시작 (온체인 트랜잭션 발생!)
+        job_id = chosen_offering.initiate_job(
+            service_requirement=service_requirement,
+            evaluator_address=agent_wallet,  # 자기 자신이 평가자
+        )
+
+        print(f"✅ [Type B] Job initiated! Job ID: {job_id}")
+        print(f"   Agent: {agent['name']} | Offering: {getattr(chosen_offering, 'name', 'N/A')}")
+
+        return {
+            "status": "paid_job_initiated",
+            "job_id": str(job_id),
+            "agent": agent["name"],
+            "type": "TYPE_B_ONCHAIN"
+        }
+
+    except ImportError:
+        print("⚠️ [Type B] virtuals-acp not installed. Run: pip install virtuals-acp")
+        return None
+    except Exception as e:
+        print(f"⚠️ [Type B] Error: {e}")
+        return None
+
+
+def _should_run_type_b() -> bool:
+    """Type B 실행 여부 판단 (6시간마다)"""
+    global _last_type_b_time
+    now = datetime.now()
+    if _last_type_b_time is None:
+        return True
+    return (now - _last_type_b_time).total_seconds() >= TYPE_B_INTERVAL_HOURS * 3600
+
+
+def _log_cross_validation(trinity_data: Dict, agent: Dict, agent_response: Optional[Dict], tx_type: str = "TYPE_A"):
     """교차검증 결과 로그 저장"""
     log_entry = {
         "timestamp": datetime.now().isoformat(),
+        "tx_type": tx_type,
         "trinity_score": trinity_data.get("trading_luck_score"),
         "trinity_sectors": trinity_data.get("favorable_sectors"),
         "trinity_volatility": trinity_data.get("volatility_index"),
@@ -155,7 +246,6 @@ def _log_cross_validation(trinity_data: Dict, agent: Dict, agent_response: Optio
         "cross_validation": _interpret_cross_validation(trinity_data, agent_response)
     }
 
-    # 로그 파일에 저장
     log_path = os.path.join(os.path.dirname(__file__), "data", "bot_marketing_log.json")
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
 
@@ -168,25 +258,23 @@ def _log_cross_validation(trinity_data: Dict, agent: Dict, agent_response: Optio
             logs = []
 
     logs.append(log_entry)
-    # 최근 100개만 유지
     logs = logs[-100:]
 
     with open(log_path, "w") as f:
         json.dump(logs, f, indent=2, ensure_ascii=False)
 
-    print(f"📝 Cross-validation logged: Trinity={log_entry['trinity_score']}, Agent={agent['name']}")
+    print(f"📝 [{tx_type}] Cross-validation logged: Trinity={log_entry['trinity_score']}, Agent={agent['name']}")
     return log_entry
 
 
 def _interpret_cross_validation(trinity_data: Dict, agent_response: Optional[Dict]) -> str:
-    """교차검증 해석 — 마케팅 명분 생성"""
+    """교차검증 해석"""
     score = trinity_data.get("trading_luck_score", 0)
     volatility = trinity_data.get("volatility_index", "")
 
     if agent_response is None:
         return "AGENT_UNAVAILABLE"
 
-    # Trinity 점수 기반 신호
     if score >= 0.7:
         trinity_signal = "BULLISH"
     elif score >= 0.5:
@@ -194,7 +282,6 @@ def _interpret_cross_validation(trinity_data: Dict, agent_response: Optional[Dic
     else:
         trinity_signal = "BEARISH"
 
-    # 교차검증 결과
     if trinity_signal == "BULLISH" and volatility == "LOW":
         return "STRONG_ENTRY_SIGNAL"
     elif trinity_signal == "BULLISH":
@@ -208,12 +295,10 @@ def _interpret_cross_validation(trinity_data: Dict, agent_response: Optional[Dic
 async def run_bot_marketing():
     """
     메인 마케팅 봇 실행 함수 (APScheduler에서 30분마다 호출)
-    1. Trinity 오늘 운세 조회
-    2. 랜덤 타겟 에이전트 선택
-    3. 타겟 에이전트 호출 ($0.01 지불 → 온체인 기록)
-    4. 교차검증 결과 로그
-    5. 강한 신호 시 텔레그램 알림
+    Type A: 매 사이클 무료 핑
+    Type B: 6시간마다 실제 온체인 결제
     """
+    global _last_type_b_time
     print(f"\n🤖 [Bot Marketing] Starting cycle at {datetime.now().strftime('%H:%M:%S')}")
 
     # 1. Trinity 운세 조회
@@ -226,42 +311,53 @@ async def run_bot_marketing():
     sectors = trinity_data.get("favorable_sectors", [])
     print(f"📊 Trinity Score: {score} | Sectors: {sectors}")
 
-    # 2. 랜덤 타겟 에이전트 + 토큰 선택 (패턴 노출 방지)
+    # 2. 랜덤 타겟 에이전트 + 토큰 선택
     agent = random.choice(TARGET_AGENTS)
     token = random.choice(SAMPLE_TOKENS)
     print(f"🎯 Target: {agent['name']} | Token: {token[:10]}...")
 
-    # 3. 에이전트 호출 (실제 $0.01 트랜잭션 발생)
-    agent_response = _call_target_agent(agent, token)
-
-    # 4. 교차검증 로그
-    log_entry = _log_cross_validation(trinity_data, agent, agent_response)
+    # ===== TYPE A: 무료 핑 (매 사이클) =====
+    agent_response = _call_target_agent_free(agent, token)
+    log_entry = _log_cross_validation(trinity_data, agent, agent_response, "TYPE_A")
     cross_signal = log_entry["cross_validation"]
 
-    # 5. 텔레그램 알림 (매 사이클 요약)
+    # ===== TYPE B: 유료 결제 (6시간마다) =====
+    type_b_result = None
+    type_b_tag = ""
+    if _should_run_type_b():
+        print(f"\n💳 [Type B] 6-hour interval reached — initiating paid job...")
+        paid_agent = random.choice(TARGET_AGENTS)
+        type_b_result = _call_target_agent_paid(paid_agent)
+        if type_b_result:
+            _last_type_b_time = datetime.now()
+            _log_cross_validation(trinity_data, paid_agent, type_b_result, "TYPE_B")
+            type_b_tag = f"\n💳 <b>Type B Paid Job:</b> {paid_agent['name']} | Job ID: {type_b_result.get('job_id', 'N/A')}"
+            print(f"✅ [Type B] Complete! Next in {TYPE_B_INTERVAL_HOURS}h")
+
+    # 5. 텔레그램 알림
     signal_tag = {
-        "STRONG_ENTRY_SIGNAL":        "[STRONG BUY]",
-        "ENTRY_SIGNAL_HIGH_VOLATILITY": "[BUY - High Vol]",
-        "NEUTRAL_SIGNAL":             "[NEUTRAL]",
-        "CAUTION_SIGNAL":             "[CAUTION]",
-        "AGENT_UNAVAILABLE":          "[AGENT OFFLINE]",
+        "STRONG_ENTRY_SIGNAL":          "🟢 [STRONG BUY]",
+        "ENTRY_SIGNAL_HIGH_VOLATILITY": "🟡 [BUY - High Vol]",
+        "NEUTRAL_SIGNAL":               "⚪ [NEUTRAL]",
+        "CAUTION_SIGNAL":               "🔴 [CAUTION]",
+        "AGENT_UNAVAILABLE":            "⚫ [AGENT OFFLINE]",
     }.get(cross_signal, "[UNKNOWN]")
 
     agent_status = "OK" if agent_response else "NO RESPONSE"
 
     message = (
         f"{signal_tag} <b>Bot Marketing Cycle Done</b>\n\n"
-        f"- <b>Target:</b> {agent['name']}\n"
+        f"- <b>Type A Target:</b> {agent['name']}\n"
         f"- <b>Trinity Score:</b> {score} / 1.0\n"
         f"- <b>Sectors:</b> {', '.join(sectors)}\n"
         f"- <b>Agent Response:</b> {agent_status}\n"
-        f"- <b>Signal:</b> <b>{cross_signal}</b>\n\n"
+        f"- <b>Signal:</b> <b>{cross_signal}</b>"
+        f"{type_b_tag}\n\n"
         f"<i>Next cycle: 30 min later</i>"
     )
 
     _send_telegram(message)
     print(f"[Bot Marketing] Cycle complete: {cross_signal}\n")
-
 
 
 # ===== 직접 실행 테스트 =====
