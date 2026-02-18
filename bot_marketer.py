@@ -185,7 +185,7 @@ def _call_target_agent_paid(agent: Dict) -> Optional[Dict]:
         relevant_agents = acp_client.browse_agents(agent["name"])
 
         if not relevant_agents:
-            print(f"⚠️ [Type B] Agent '{agent['name']}' not found in ACP marketplace")
+            print(f"[Type B] Agent '{agent['name']}' not found in ACP marketplace")
             return None
 
         chosen_agent = relevant_agents[0]
@@ -194,14 +194,34 @@ def _call_target_agent_paid(agent: Dict) -> Optional[Dict]:
             print(f"[Type B] No offerings"); return None
         chosen_offering = min(chosen_agent.job_offerings, key=lambda x: getattr(x, 'price', float('inf')))
 
-        # 만료 시간: 24시간 후
-        expired_at = datetime.now() + timedelta(hours=24)
+        # 스키마에서 required 필드 자동 추출하여 JSON 객체 생성
+        schema = getattr(chosen_offering, 'schema', None) or getattr(chosen_offering, 'input_schema', None)
+        if schema and isinstance(schema, dict):
+            required_fields = schema.get('required', [])
+            props = schema.get('properties', {})
+            service_requirement = {}
+            for field in required_fields:
+                field_type = props.get(field, {}).get('type', 'string')
+                if field_type == 'string':
+                    service_requirement[field] = f"trinity-cross-validation-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+                elif field_type == 'number':
+                    service_requirement[field] = 0
+                elif field_type == 'boolean':
+                    service_requirement[field] = True
+                else:
+                    service_requirement[field] = "trinity-request"
+            print(f"[Type B] Schema detected, using: {service_requirement}")
+        else:
+            # 스키마 없으면 기본 문자열
+            service_requirement = f"Trinity Agent cross-validation: {agent['service']} analysis {datetime.now().strftime('%Y-%m-%d')}"
+            print(f"[Type B] No schema, using string requirement")
 
         # Job 시작 (온체인 트랜잭션 발생!)
         job_id = chosen_offering.initiate_job(
             service_requirement=service_requirement,
-            evaluator_address=agent_wallet,  # 자기 자신이 평가자
+            evaluator_address=agent_wallet,
         )
+
 
         print(f"✅ [Type B] Job initiated! Job ID: {job_id}")
         print(f"   Agent: {agent['name']} | Offering: {getattr(chosen_offering, 'name', 'N/A')}")
