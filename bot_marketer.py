@@ -195,7 +195,7 @@ def _call_target_agent_paid(agent: Dict) -> Optional[Dict]:
         chosen_offering = min(chosen_agent.job_offerings, key=lambda x: getattr(x, 'price', float('inf')))
 
         # 스키마에서 required 필드 자동 추출하여 JSON 객체 생성
-        schema = getattr(chosen_offering, 'schema', None) or getattr(chosen_offering, 'input_schema', None)
+        schema = getattr(chosen_offering, 'requirement', None)
         if schema and isinstance(schema, dict):
             required_fields = schema.get('required', [])
             props = schema.get('properties', {})
