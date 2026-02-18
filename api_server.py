@@ -161,9 +161,9 @@ def root():
         "health": "/health"
     }
 
-@app.get("/health", tags=["Monitoring"])
+@app.api_route("/health", methods=["GET", "HEAD"], tags=["Monitoring"])
 def health_check():
-    """헬스체크 엔드포인트"""
+    """헬스체크 엔드포인트 (GET/HEAD 모두 지원)"""
     uptime_seconds = time.time() - start_time
     uptime_hours = uptime_seconds / 3600
     
