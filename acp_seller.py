@@ -140,7 +140,7 @@ def on_new_task(job, memo_to_sign=None):
                 break
             except Exception as ae:
                 err_str = str(ae)
-                if 'Already signed' in err_str or 'already' in err_str.lower():
+                if 'signed' in err_str.lower() or 'already' in err_str.lower():
                     print(f"[Seller] Job {job_id} already signed, continuing...")
                     break  # 이미 accept된 job → 그냥 계속 진행
                 print(f"[Seller] accept() attempt {attempt+1} failed: {ae}")
