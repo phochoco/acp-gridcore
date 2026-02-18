@@ -188,11 +188,29 @@ def run_seller():
             "[ONLINE] <b>Trinity Seller Service Started</b>\n"
             "- dailyLuck: $0.01 USDC\n"
             "- deepLuck: $0.50 USDC\n"
-            "- Waiting for purchase requests..."
+            "- Polling for purchase requests every 30s..."
         )
 
-        # 서비스 대기 루프
-        acp_client.start()
+        # 폴링 루프 — 30초마다 미처리 주문 확인
+        import time
+        print("[Seller] Polling loop started (every 30s)...")
+        while True:
+            try:
+                pending = acp_client.get_pending_memo_jobs()
+                if pending:
+                    print(f"[Seller] Found {len(pending)} pending job(s)!")
+                    for job in pending:
+                        try:
+                            result = acp_client.handle_new_task(job)
+                            print(f"[Seller] Job handled: {result}")
+                        except Exception as je:
+                            print(f"[Seller] Job handling error: {je}")
+                else:
+                    print(f"[Seller] No pending jobs at {datetime.now().strftime('%H:%M:%S')}")
+            except Exception as pe:
+                print(f"[Seller] Polling error: {pe}")
+            time.sleep(30)
+
 
     except ImportError:
         print("[Seller] virtuals-acp not installed")
