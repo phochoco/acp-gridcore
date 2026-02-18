@@ -150,8 +150,8 @@ def _call_target_agent_paid(agent: Dict) -> Optional[Dict]:
     """
     try:
         from virtuals_acp.client import VirtualsACP
-        from virtuals_acp import ACPContractClientV2
-        from virtuals_acp.config import BASE_MAINNET_ACP_X402_CONFIG_V2
+        from virtuals_acp.contract_clients.contract_client_v2 import ACPContractClientV2
+        from virtuals_acp.configs.configs import BASE_MAINNET_ACP_X402_CONFIG_V2
 
         private_key = os.getenv("WHITELISTED_WALLET_PRIVATE_KEY", "")
         agent_wallet = os.getenv("BUYER_AGENT_WALLET_ADDRESS", "")
