@@ -226,10 +226,16 @@ def run_seller():
 
                         except Exception as je:
                             print(f"[Seller] Job handling error: {je}")
+                            _send_telegram(
+                                f"⚠️ [Seller] Job 처리 오류\n"
+                                f"- Job ID: {getattr(job, 'id', 'unknown')}\n"
+                                f"- Error: {str(je)[:200]}"
+                            )
                 else:
                     print(f"[Seller] No pending jobs at {datetime.now().strftime('%H:%M:%S')}")
             except Exception as pe:
                 print(f"[Seller] Polling error: {pe}")
+                _send_telegram(f"⚠️ [Seller] 폴링 오류 발생\n- Error: {str(pe)[:200]}")
             time.sleep(30)
 
 

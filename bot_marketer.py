@@ -16,49 +16,31 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-# ===== 타겟 에이전트 설정 =====
-# ACP 마켓 상위 에이전트 (실제 확인된 Project ID)
-TARGET_AGENTS = [
-    {
-        "name": "Ethy AI",
-        "project_id": "84",
-        "service": "token_info",
-        "description": "ETH ecosystem intelligence — #1 ranked agent"
-    },
-    {
-        "name": "BigBugAi",
-        "project_id": "157",
-        "service": "market_scan",
-        "description": "Market scanner"
-    },
-    {
-        "name": "ArAIstotle",
-        "project_id": "842",
-        "service": "analysis",
-        "description": "AI analysis"
-    },
-    {
-        "name": "Axelrod",
-        "project_id": "129",
-        "service": "analysis",
-        "description": "Trading analysis"
-    },
-    {
-        "name": "Otto AI",
-        "project_id": "788",
-        "service": "trading",
-        "description": "Trading agent"
-    },
-]
+# ===== 타겟 에이전트 설정 (targets.json에서 동적 로드) =====
+def _load_targets():
+    """targets.json에서 에이전트/토큰 목록 로드 (없으면 기본값 사용)"""
+    targets_path = os.path.join(os.path.dirname(__file__), "targets.json")
+    try:
+        with open(targets_path, "r") as f:
+            data = json.load(f)
+            agents = data.get("agents", [])
+            tokens = data.get("tokens", [])
+            if agents and tokens:
+                print(f"[Config] Loaded {len(agents)} agents, {len(tokens)} tokens from targets.json")
+                return agents, tokens
+    except Exception as e:
+        print(f"[Config] targets.json load failed: {e}, using defaults")
 
-# 교차검증에 사용할 토큰 주소 목록
-SAMPLE_TOKENS = [
-    "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",  # WETH
-    "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",  # WBTC
-    "0x6B175474E89094C44Da98b954EedeAC495271d0F",  # DAI
-    "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",  # USDC
-    "0x514910771AF9Ca656af840dff83E8264EcF986CA",  # LINK
-]
+    # 기본값 (targets.json 없을 때)
+    return [
+        {"name": "Otto AI", "project_id": "788", "service": "trading", "description": "Trading agent"},
+        {"name": "BigBugAi", "project_id": "157", "service": "market_scan", "description": "Market scanner"},
+    ], [
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+    ]
+
+TARGET_AGENTS, SAMPLE_TOKENS = _load_targets()
 
 BASE_API_URL = "http://15.165.210.0:8000"
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "***REDACTED_TELEGRAM***")

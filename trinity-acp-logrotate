@@ -1,0 +1,10 @@
+# Trinity ACP Agent — logrotate 설정
+# VPS에서 적용: sudo cp trinity-acp-logrotate /etc/logrotate.d/trinity-acp
+
+/home/ubuntu/acp-gridcore/data/*.json {
+    weekly
+    rotate 4
+    compress
+    missingok
+    notifempty
+}
