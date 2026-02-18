@@ -238,20 +238,31 @@ async def run_bot_marketing():
     log_entry = _log_cross_validation(trinity_data, agent, agent_response)
     cross_signal = log_entry["cross_validation"]
 
-    # 5. 강한 신호 시 텔레그램 알림
-    if cross_signal == "STRONG_ENTRY_SIGNAL":
-        message = f"""🔥 <b>Trinity × {agent['name']} 교차검증 신호!</b>
+    # 5. 텔레그램 알림 (매 사이클 요약)
+    # 신호 이모지 매핑
+    signal_emoji = {
+        "STRONG_ENTRY_SIGNAL": "🔥",
+        "ENTRY_SIGNAL_HIGH_VOLATILITY": "📈",
+        "NEUTRAL_SIGNAL": "😐",
+        "CAUTION_SIGNAL": "⚠️",
+        "AGENT_UNAVAILABLE": "🔌",
+    }.get(cross_signal, "🤖")
 
-• Trinity 운세: <b>{score}</b> / 1.0 ✅
-• 추천 섹터: <b>{', '.join(sectors)}</b>
-• {agent['name']} 응답: 확인됨 ✅
-• 교차검증: <b>STRONG ENTRY SIGNAL</b>
+    agent_status = "✅ 호출 성공" if agent_response else "❌ 응답 없음"
 
-<i>두 에이전트가 동시에 강세 신호 → 진입 고려</i>"""
-        _send_telegram(message)
-        print(f"📱 Strong signal alert sent!")
+    message = f"""{signal_emoji} <b>Bot Marketing 사이클 완료</b>
 
+• <b>타겟:</b> {agent['name']}
+• <b>Trinity 점수:</b> {score} / 1.0
+• <b>추천 섹터:</b> {', '.join(sectors)}
+• <b>에이전트 응답:</b> {agent_status}
+• <b>교차검증 신호:</b> <b>{cross_signal}</b>
+
+<i>다음 사이클: 30분 후</i>"""
+
+    _send_telegram(message)
     print(f"✅ [Bot Marketing] Cycle complete: {cross_signal}\n")
+
 
 
 # ===== 직접 실행 테스트 =====
