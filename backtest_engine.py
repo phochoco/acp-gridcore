@@ -1,11 +1,13 @@
 """
 Backtest Engine - 실제 BTC 데이터 기반 신뢰성 검증
 비트코인 제네시스 블록 생일 기반 운세 점수와 실제 BTC 가격/거래량/변동성 상관관계 분석
+데이터 소스: Yahoo Finance (yfinance) - API Key 불필요
 """
 import json
 import os
-import requests
+import yfinance as yf
 import numpy as np
+import pandas as pd
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 
@@ -85,16 +87,16 @@ class BacktestEngine:
             "sample_size": len(self.historical_data),
             "accuracy_rate": self._calculate_accuracy(scores, price_changes),
             "methodology": f"Bitcoin Genesis Block ({BITCOIN_GENESIS_BIRTH['year']}-{BITCOIN_GENESIS_BIRTH['month']:02d}-{BITCOIN_GENESIS_BIRTH['day']:02d} {BITCOIN_GENESIS_BIRTH['hour']:02d}:{BITCOIN_GENESIS_BIRTH['minute']:02d} KST) based analysis",
-            "data_source": "CoinGecko API" if self.use_real_data else "Sample Data",
+            "data_source": "Yahoo Finance (yfinance)" if self.use_real_data else "Sample Data",
             "disclaimer": "Past performance does not guarantee future results. This is for informational purposes only."
         }
     
     def _fetch_real_backtest_data(self) -> List[Dict]:
-        """실제 BTC 가격 데이터 수집 및 백테스트"""
-        print("🔍 Fetching real BTC data from CoinGecko API...")
+        """실제 BTC 가격 데이터 수집 및 백테스트 (Yahoo Finance)"""
+        print("🔍 Fetching real BTC data from Yahoo Finance (yfinance)...")
         
         # 1. BTC 가격 + 거래량 데이터 수집
-        btc_data = self._fetch_btc_prices_and_volumes()
+        btc_data = self._fetch_btc_with_yfinance()
         
         if not btc_data:
             print("⚠️ Failed to fetch BTC data, using sample data")
@@ -110,8 +112,8 @@ class BacktestEngine:
         print(f"✅ Backtest data ready: {len(matched_data)} days")
         return matched_data
     
-    def _fetch_btc_prices_and_volumes(self) -> Optional[List[Dict]]:
-        """CoinGecko API로 BTC 가격 + 거래량 데이터 수집 (캐싱 포함)"""
+    def _fetch_btc_with_yfinance(self) -> Optional[List[Dict]]:
+        """Yahoo Finance(yfinance)로 BTC 가격 + 거래량 데이터 수집 (캐싱 포함, API Key 불필요)"""
         cache_file = os.path.join(self.cache_dir, "btc_data_cache.json")
         
         # 캐시 확인 (24시간 이내)
@@ -122,43 +124,44 @@ class BacktestEngine:
                 with open(cache_file, 'r') as f:
                     return json.load(f)
         
-        # API 호출 (무료 버전 사용)
         try:
-            # CoinGecko 무료 API는 market_chart/range 대신 market_chart 사용
-            url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart"
+            # yfinance로 최근 413일 BTC-USD 데이터 다운로드
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=413)
             
-            params = {
-                "vs_currency": "usd",
-                "days": "413",  # 최근 413일
-                "interval": "daily"
-            }
+            print("🌐 Downloading BTC-USD data from Yahoo Finance...")
+            df = yf.download("BTC-USD", start=start_date, end=end_date, progress=False)
             
-            print(f"🌐 Calling CoinGecko API (free tier)...")
-            response = requests.get(url, params=params, timeout=30)
-            
-            if response.status_code == 401:
-                print("⚠️ CoinGecko API requires authentication, using sample data")
+            if df.empty:
+                print("⚠️ yfinance returned empty data")
                 return None
             
-            response.raise_for_status()
+            # 컬럼 정규화 (yfinance 버전에 따라 다를 수 있음)
+            df = df.reset_index()
+            df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
             
-            data = response.json()
+            # 필수 컬럼 추출
+            df = df[['Date', 'Close', 'Volume']].copy()
+            df.columns = ['date', 'price', 'volume']
+            df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
             
-            # 일일 데이터로 변환
-            daily_data = self._convert_to_daily_data(
-                data.get("prices", []),
-                data.get("total_volumes", [])
-            )
+            # 변동률 계산
+            df['price_change_percent'] = df['price'].pct_change() * 100
+            df['volume_change_percent'] = df['volume'].pct_change() * 100
+            df = df.dropna()
+            
+            # List[Dict]로 변환
+            daily_data = df.to_dict('records')
             
             # 캐시 저장
             with open(cache_file, 'w') as f:
-                json.dump(daily_data, f, indent=2)
+                json.dump(daily_data, f, indent=2, default=str)
             
-            print(f"✅ Fetched {len(daily_data)} days of BTC data")
+            print(f"✅ Downloaded {len(daily_data)} days of REAL BTC data from Yahoo Finance")
             return daily_data
             
         except Exception as e:
-            print(f"❌ Error fetching BTC data: {e}")
+            print(f"❌ Error fetching BTC data via yfinance: {e}")
             return None
     
     def _convert_to_daily_data(self, prices: List, volumes: List) -> List[Dict]:
@@ -214,22 +217,29 @@ class BacktestEngine:
     
     def _calculate_bitcoin_luck_scores(self, btc_data: List[Dict]) -> List[Dict]:
         """비트코인 제네시스 블록 생일 기반 운세 점수 계산"""
-        from trinity_engine import TrinityEngine
+        from trinity_engine_v2 import TrinityEngineV2
         
-        engine = TrinityEngine()
+        engine = TrinityEngineV2()
         luck_scores = []
+        
+        # 비트코인 생일 문자열
+        btc_birth_date = f"{BITCOIN_GENESIS_BIRTH['year']}-{BITCOIN_GENESIS_BIRTH['month']:02d}-{BITCOIN_GENESIS_BIRTH['day']:02d}"
+        btc_birth_time = f"{BITCOIN_GENESIS_BIRTH['hour']:02d}:{BITCOIN_GENESIS_BIRTH['minute']:02d}"
         
         for data in btc_data:
             date_str = data["date"]
             
             try:
-                score = engine.calculate_daily_luck(
-                    target_date=date_str,
-                    birth_year=BITCOIN_GENESIS_BIRTH["year"],
-                    birth_month=BITCOIN_GENESIS_BIRTH["month"],
-                    birth_day=BITCOIN_GENESIS_BIRTH["day"],
-                    birth_hour=BITCOIN_GENESIS_BIRTH["hour"]
+                result = engine.calculate_daily_luck(
+                    birth_date=btc_birth_date,
+                    birth_time=btc_birth_time,
+                    target_date=date_str
                 )
+                
+                if isinstance(result, dict):
+                    score = result.get('trading_luck_score', 0.5)
+                else:
+                    score = float(result) if result else 0.5
                 
                 luck_scores.append({
                     "date": date_str,
@@ -258,7 +268,7 @@ class BacktestEngine:
                     "date": date,
                     "luck_score": luck_by_date[date],
                     "btc_price": btc["price"],
-                    "btc_change_percent": btc["price_change_percent"],
+                    "price_change_percent": btc.get("price_change_percent", 0),  # 키 통일
                     "btc_volume": btc.get("volume", 0),
                     "volume_change_percent": btc.get("volume_change_percent", 0)
                 })
