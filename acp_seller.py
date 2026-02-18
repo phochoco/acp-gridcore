@@ -201,8 +201,29 @@ def run_seller():
                     print(f"[Seller] Found {len(pending)} pending job(s)!")
                     for job in pending:
                         try:
-                            result = acp_client.handle_new_task(job)
-                            print(f"[Seller] Job handled: {result}")
+                            job_id = getattr(job, 'id', 'unknown')
+                            job_name = getattr(job, 'name', '') or ''
+                            requirement = getattr(job, 'requirement', {}) or {}
+                            phase = str(getattr(job, 'phase', ''))
+                            client_addr = getattr(job, 'client_address', '')
+
+                            print(f"[Seller] Job {job_id}: name={job_name}, phase={phase}")
+                            print(f"[Seller] Requirement: {requirement}")
+
+                            # 자기 자신이 보낸 job (buyer==evaluator)은 스킵
+                            if client_addr.lower() == agent_wallet.lower():
+                                print(f"[Seller] Skipping own job {job_id}")
+                                continue
+
+                            # 주문 수락
+                            job.accept()
+                            print(f"[Seller] Job {job_id} accepted!")
+
+                            # 서비스 처리 및 결과 전달
+                            deliverable = on_new_task(job)
+                            job.deliver(deliverable)
+                            print(f"[Seller] Job {job_id} delivered!")
+
                         except Exception as je:
                             print(f"[Seller] Job handling error: {je}")
                 else:
