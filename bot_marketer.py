@@ -12,26 +12,38 @@ from datetime import datetime
 from typing import Dict, Optional
 
 # ===== 타겟 에이전트 설정 =====
-# ACP 마켓 상위 에이전트들 (Project ID 기반)
-# 실제 ID는 app.virtuals.io/acp 에서 확인 후 업데이트
+# ACP 마켓 상위 에이전트 (실제 확인된 Project ID)
+# https://app.virtuals.io/acp/agent-details/{id}
 TARGET_AGENTS = [
     {
         "name": "Ethy AI",
-        "project_id": "ethy-ai-project-id",   # TODO: 실제 ID로 교체
+        "project_id": "84",
         "service": "token_info",
-        "description": "ETH ecosystem intelligence"
+        "description": "ETH ecosystem intelligence — #1 ranked agent"
     },
     {
-        "name": "BigBugAI",
-        "project_id": "bigbug-ai-project-id",  # TODO: 실제 ID로 교체
+        "name": "BigBugAi",
+        "project_id": "157",
         "service": "market_scan",
         "description": "Market scanner"
     },
     {
         "name": "ArAIstotle",
-        "project_id": "araistotle-project-id", # TODO: 실제 ID로 교체
+        "project_id": "842",
         "service": "analysis",
         "description": "AI analysis"
+    },
+    {
+        "name": "Axelrod",
+        "project_id": "129",
+        "service": "analysis",
+        "description": "Trading analysis"
+    },
+    {
+        "name": "Otto AI",
+        "project_id": "788",
+        "service": "trading",
+        "description": "Trading agent"
     },
 ]
 
