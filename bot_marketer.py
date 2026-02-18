@@ -239,29 +239,28 @@ async def run_bot_marketing():
     cross_signal = log_entry["cross_validation"]
 
     # 5. 텔레그램 알림 (매 사이클 요약)
-    # 신호 이모지 매핑
-    signal_emoji = {
-        "STRONG_ENTRY_SIGNAL": "🔥",
-        "ENTRY_SIGNAL_HIGH_VOLATILITY": "📈",
-        "NEUTRAL_SIGNAL": "😐",
-        "CAUTION_SIGNAL": "⚠️",
-        "AGENT_UNAVAILABLE": "🔌",
-    }.get(cross_signal, "🤖")
+    signal_tag = {
+        "STRONG_ENTRY_SIGNAL":        "[STRONG BUY]",
+        "ENTRY_SIGNAL_HIGH_VOLATILITY": "[BUY - High Vol]",
+        "NEUTRAL_SIGNAL":             "[NEUTRAL]",
+        "CAUTION_SIGNAL":             "[CAUTION]",
+        "AGENT_UNAVAILABLE":          "[AGENT OFFLINE]",
+    }.get(cross_signal, "[UNKNOWN]")
 
-    agent_status = "✅ 호출 성공" if agent_response else "❌ 응답 없음"
+    agent_status = "OK" if agent_response else "NO RESPONSE"
 
-    message = f"""{signal_emoji} <b>Bot Marketing 사이클 완료</b>
-
-• <b>타겟:</b> {agent['name']}
-• <b>Trinity 점수:</b> {score} / 1.0
-• <b>추천 섹터:</b> {', '.join(sectors)}
-• <b>에이전트 응답:</b> {agent_status}
-• <b>교차검증 신호:</b> <b>{cross_signal}</b>
-
-<i>다음 사이클: 30분 후</i>"""
+    message = (
+        f"{signal_tag} <b>Bot Marketing Cycle Done</b>\n\n"
+        f"- <b>Target:</b> {agent['name']}\n"
+        f"- <b>Trinity Score:</b> {score} / 1.0\n"
+        f"- <b>Sectors:</b> {', '.join(sectors)}\n"
+        f"- <b>Agent Response:</b> {agent_status}\n"
+        f"- <b>Signal:</b> <b>{cross_signal}</b>\n\n"
+        f"<i>Next cycle: 30 min later</i>"
+    )
 
     _send_telegram(message)
-    print(f"✅ [Bot Marketing] Cycle complete: {cross_signal}\n")
+    print(f"[Bot Marketing] Cycle complete: {cross_signal}\n")
 
 
 
