@@ -112,6 +112,74 @@ curl -X POST http://localhost:8000/api/v1/daily-luck \
 
 **Full API Docs**: [API_GUIDE.md](API_GUIDE.md)
 
+> 💡 **Pro Tip**: Need precise entry timing? Use `/api/v1/deep-luck` ($0.50).
+> It analyzes the full 24-hour cycle to find the **"Golden Time"** for max alpha.
+> Basic gives you the day's weather. Pro gives you the exact hour of the storm.
+
+### POST /api/v1/deep-luck ⭐ Pro Plan ($0.50)
+
+**Full Four Pillars (사주팔자) analysis** — Hour pillar included for precise entry timing.
+
+**Request:**
+```json
+{
+  "birth_date": "1990-05-15",
+  "birth_time": "14:30",
+  "target_date": "2026-02-18",
+  "gender": "M"
+}
+```
+
+**Response:**
+```json
+{
+  "meta": {
+    "target_date": "2026-02-18",
+    "algorithm": "Gridcore_Saju_Hourly_V1",
+    "process_time_ms": 2
+  },
+  "strategy": {
+    "action": "WAIT_UNTIL_1300",
+    "best_window": "13:00~15:00",
+    "max_score": 0.75,
+    "pro_tip": "Golden Cross at 13:00. Low clash risk + peak luck. Ideal entry."
+  },
+  "hourly_analysis": {
+    "max_score": 0.75,
+    "min_score": 0.31,
+    "spread": 0.44,
+    "volatility_warning": "00:00~02:00 (Score 0.31, Clash detected ⚠️)"
+  },
+  "hourly_forecast": [
+    {
+      "time": "13:00",
+      "score": 0.75,
+      "element": "Wood",
+      "signal": "STRONG_BUY",
+      "reason": "Growth energy aligns with market expansion.",
+      "is_golden": true
+    },
+    {
+      "time": "00:00",
+      "score": 0.31,
+      "element": "Earth",
+      "signal": "AVOID",
+      "reason": "Clash detected (충) — High volatility and reversal risk.",
+      "is_golden": false
+    }
+  ]
+}
+```
+
+| Signal | Score Range | Action |
+|--------|-------------|--------|
+| `STRONG_BUY` | ≥ 0.80 | Full position |
+| `BUY` | 0.65~0.79 | Normal entry |
+| `NEUTRAL` | 0.50~0.64 | Wait & watch |
+| `CAUTION` | 0.40~0.49 | Reduce size |
+| `AVOID` | < 0.40 | No trade |
+| `DO_NOT_TRADE` | All < 0.60 | Rest today |
+
 ---
 
 ## 🔬 Engine Philosophy: Science + Art
