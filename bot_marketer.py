@@ -190,12 +190,9 @@ def _call_target_agent_paid(agent: Dict) -> Optional[Dict]:
 
         chosen_agent = relevant_agents[0]
 
-        if not chosen_agent.offerings:
-            print(f"⚠️ [Type B] No offerings found for {agent['name']}")
-            return None
-
-        # 가장 저렴한 서비스 선택
-        chosen_offering = min(chosen_agent.offerings, key=lambda x: getattr(x, 'price', float('inf')))
+        if not chosen_agent.job_offerings:
+            print(f"[Type B] No offerings"); return None
+        chosen_offering = min(chosen_agent.job_offerings, key=lambda x: getattr(x, 'price', float('inf')))
 
         # 만료 시간: 24시간 후
         expired_at = datetime.now() + timedelta(hours=24)
