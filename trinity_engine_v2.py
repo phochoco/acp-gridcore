@@ -247,11 +247,14 @@ class TrinityEngineV2:
         # 1. 사주 계산
         saju = self._calculate_saju(birth_date, birth_time, gender)
         
-        # 2. 목표 날짜의 연도 추출
-        target_year = datetime.strptime(target_date, "%Y-%m-%d").year
+        # 2. 목표 날짜의 연도/월/일 추출
+        target_dt = datetime.strptime(target_date, "%Y-%m-%d")
+        target_year  = target_dt.year
+        target_month = target_dt.month
+        target_day   = target_dt.day
         
-        # 3. Trinity 점수 계산 (정교한 버전)
-        trinity_score = self._calculate_trinity_score_v2(saju, target_year)
+        # 3. Trinity 점수 계산 (정교한 버전 — 월운 + 일운 포함)
+        trinity_score = self._calculate_trinity_score_v2(saju, target_year, target_month, target_day)
         
         # 4. 크립토 네이티브 용어로 변환
         crypto_result = self._map_to_crypto_terms(trinity_score, saju)
@@ -393,9 +396,9 @@ class TrinityEngineV2:
             strong=strong
         )
     
-    def _calculate_trinity_score_v2(self, saju: SajuData, target_year: int) -> TrinityScore:
+    def _calculate_trinity_score_v2(self, saju: SajuData, target_year: int, target_month: int = 1, target_day: int = 1) -> TrinityScore:
         """
-        Trinity 점수 계산 v2 (정교한 대운/세운 로직)
+        Trinity 점수 계산 v2 (정교한 대운/세운/월운/일운 로직)
         """
         score = 50.0  # 기본 점수
         breakdown = []
@@ -410,7 +413,17 @@ class TrinityEngineV2:
         score += seun_score
         breakdown.append(f"Annual Cycle (Seun): {seun_score:+.1f}pts")
         
-        # 3. 상호작용 점수 (±10점)
+        # 3. 월운 점수 (±10점, 세운의 1/2 영향력) — 월별 변동
+        wolun_score = self._calculate_wolun_score_v2(saju, target_year, target_month)
+        score += wolun_score
+        breakdown.append(f"Monthly Cycle (Wolun): {wolun_score:+.1f}pts")
+        
+        # 4. 일운 점수 (±5점, 월운의 1/2 영향력) — 일별 변동
+        ilun_score = self._calculate_ilun_score_v2(saju, target_year, target_month, target_day)
+        score += ilun_score
+        breakdown.append(f"Daily Cycle (Ilun): {ilun_score:+.1f}pts")
+        
+        # 5. 상호작용 점수 (±10점)
         interaction_score = self._calculate_interaction_score(saju)
         score += interaction_score
         if interaction_score != 0:
@@ -507,6 +520,74 @@ class TrinityEngineV2:
         # 가중 평균 (천간 30% + 지지 70%)
         # 세운은 대운의 2/3 영향력
         total_score = (gan_score * 0.3 + ji_score * 0.7) * 0.67
+        
+        return total_score
+    
+    def _calculate_wolun_score_v2(self, saju: SajuData, target_year: int, target_month: int) -> float:
+        """
+        월운 점수 계산 v2 (용신 기반, 세운의 1/2 영향력)
+        월간(月干): 년간 인덱스 × 2 + 월 인덱스) % 10
+        월지(月支): (월 + 1) % 12  (인월=1월 기준)
+        """
+        if not saju.yongsin_data:
+            return 0.0
+        
+        yongsin_data = saju.yongsin_data
+        
+        # 연도 천간 인덱스
+        year_gan_idx = (target_year - 4) % 10
+        
+        # 월간 계산: (년간인덱스 × 2 + 월) % 10
+        month_gan_idx = (year_gan_idx * 2 + target_month) % 10
+        # 월지 계산: 1월=인(寅)=인덱스2 기준
+        month_zhi_idx = (target_month + 1) % 12
+        
+        month_gan = HEAVENLY_STEMS_KO[month_gan_idx]
+        month_ji  = EARTHLY_BRANCHES_KO[month_zhi_idx]
+        
+        # 천간 평가
+        gan_score = evaluate_element(month_gan, yongsin_data.yongsin, yongsin_data.heesin)
+        # 지지 평가
+        ji_score  = evaluate_element(month_ji,  yongsin_data.yongsin, yongsin_data.heesin)
+        
+        # 가중 평균 (천간 30% + 지지 70%)
+        # 월운은 세운의 1/2 영향력
+        total_score = (gan_score * 0.3 + ji_score * 0.7) * 0.33
+        
+        return total_score
+    
+    def _calculate_ilun_score_v2(self, saju: SajuData, target_year: int, target_month: int, target_day: int) -> float:
+        """
+        일운 점수 계산 v2 (용신 기반, 월운의 1/2 영향력)
+        60갑자 순환: 기준일 1900-01-01 = 갑자일(甲子日, 인덱스 0)
+        일간 = (1900-01-01로부터 경과 일수) % 60
+        """
+        if not saju.yongsin_data:
+            return 0.0
+        
+        from datetime import date as date_cls
+        BASE_DATE = date_cls(1900, 1, 1)  # 갑자일 기준
+        target_date_obj = date_cls(target_year, target_month, target_day)
+        days_elapsed = (target_date_obj - BASE_DATE).days
+        
+        # 60갑자 순환 인덱스
+        cycle_idx = days_elapsed % 60
+        day_gan_idx = cycle_idx % 10
+        day_zhi_idx = cycle_idx % 12
+        
+        day_gan = HEAVENLY_STEMS_KO[day_gan_idx]
+        day_ji  = EARTHLY_BRANCHES_KO[day_zhi_idx]
+        
+        yongsin_data = saju.yongsin_data
+        
+        # 천간 평가
+        gan_score = evaluate_element(day_gan, yongsin_data.yongsin, yongsin_data.heesin)
+        # 지지 평가
+        ji_score  = evaluate_element(day_ji,  yongsin_data.yongsin, yongsin_data.heesin)
+        
+        # 가중 평균 (천간 30% + 지지 70%)
+        # 일운은 월운의 1/2 영향력
+        total_score = (gan_score * 0.3 + ji_score * 0.7) * 0.165
         
         return total_score
     
