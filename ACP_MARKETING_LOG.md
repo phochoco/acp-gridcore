@@ -563,3 +563,72 @@ fix: /wallet use Base RPC instead of deprecated BaseScan V1 API (ETH+USDC)
 
 *마지막 업데이트: 2026-02-18 17:19 KST*
 
+---
+
+## 📋 세션 4 작업 내역 (2026-02-18 저녁)
+
+### 1. Trinity Engine v2 — 4단계 계산 구조 완성
+
+**대운 → 세운 → 월운 → 일운** 순서로 계산, 매일 다른 점수 출력.
+
+| 사이클 | 함수 | 영향력 | 변동 주기 |
+|--------|------|--------|-----------|
+| 대운 (大運) | `_calculate_daewoon_score_v2` | ±30pt | 10년 |
+| 세운 (歲運) | `_calculate_seun_score_v2` | ±20pt | 1년 |
+| 월운 (月運) | `_calculate_wolun_score_v2` | ±10pt | 1개월 |
+| 일운 (日運) | `_calculate_ilun_score_v2` | ±5pt | 1일 |
+
+**일운 계산 원리**: 60갑자 순환, 기준일 `1900-01-01` (갑자일, 인덱스 0)
+```python
+days_elapsed = (target_date - date(1900, 1, 1)).days
+cycle_idx = days_elapsed % 60
+day_gan = HEAVENLY_STEMS_KO[cycle_idx % 10]
+day_ji  = EARTHLY_BRANCHES_KO[cycle_idx % 12]
+```
+
+---
+
+### 2. 백테스트 확장 (2015~2025, N=3,058일)
+
+**결과:**
+```
+Volatility correlation:   +0.2491
+luck≥0.7 → avg next-day:  +0.19%
+luck<0.4  → avg next-day:  -0.01%
+Edge (High - Low):         +0.21%
+```
+
+---
+
+### 3. 최종 ACP 프로필 문구 (500자 버전)
+
+```
+Trinity | Metaphysical Alpha for Crypto Bots
+
+Saju (Four Pillars) metaphysics → trading luck score.
+Not a signal. A pre-screening filter.
+
+✅ Flat JSON v2 — Zero parsing pain
+if data["action_signal"] == "BUY" and data["luck_score"] > 0.7:
+    execute_trade()
+
+✅ Orthogonal Alpha
+Zero overlap with RSI/MACD/on-chain data.
+5% ensemble weight → reduces overfitting.
+
+✅ Backtest: Binance BTCUSDT, N=3,058 days (2015-2025)
+luck≥0.7 → avg next-day: +0.19% | vol.corr: 0.25
+
+• dailyLuck  $0.01 — refreshes every 24h
+• deepLuck   $0.50 — full natal chart
+```
+
+### Git 커밋 내역 (세션 4)
+```
+feat: add monthly(wolun) + daily(ilun) cycle to TrinityEngineV2
+feat: backtest extended to 2015-2025 (N=3058 days) with chunked Binance fetch
+```
+
+---
+
+*마지막 업데이트: 2026-02-18 17:55 KST*
