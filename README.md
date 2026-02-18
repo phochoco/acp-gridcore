@@ -21,10 +21,12 @@ Trinity ACP Agent는 사주명리학 기반의 정량화된 "운(Luck)" 점수�
 
 ### 성능 지표
 
-- **상관계수**: 0.77
-- **정확도**: 85%
-- **응답 속도**: <2초 (목표), ~0.2ms (캐싱)
-- **처리량**: 7,500+ req/hour
+| 지표 | 값 | 방법론 |
+|------|-----|--------|
+| **변동성 상관계수** | 0.108 | Yahoo Finance N=412, Pearson |
+| **통계적 유의성** | p < 0.05 | 독립적 알파 (RSI/MACD 무관) |
+| **응답 속도** | ~10ms | FastAPI + 캐싱 |
+| **데이터 소스** | Yahoo Finance | API Key 불필요, 무료 |
 
 ---
 
@@ -191,15 +193,58 @@ sudo systemctl status trinity-acp.service
 
 ---
 
+## 🔬 엔진 철학: Science + Art
+
+```
+┌─────────────────────────────────────────────────────┐
+│              Trinity Oracle Engine                  │
+├──────────────────────┬──────────────────────────────┤
+│  🔬 SCIENCE          │  🎨 ART                      │
+│  Volatility Timing   │  Sector Rotation             │
+│                      │                              │
+│  • Backtested Alpha  │  • Five Elements Theory      │
+│  • N=412 days        │  • Logic-based Mapping       │
+│  • p < 0.05          │  • Metaphysical Heuristic    │
+│  • corr = 0.108      │  • 木→NEW_LISTING, 火→MEME   │
+│                      │                              │
+│  "언제 들어갈지"      │  "무엇을 살지"               │
+└──────────────────────┴──────────────────────────────┘
+```
+
+> **변동성은 수학으로 검증되었고, 섹터는 동양 철학의 논리를 따릅니다.**
+> 리스크 관리는 과학적으로, 종목 선정은 오행의 논리로.
+
+---
+
 ## 📊 오행 → 크립토 섹터 매핑
 
-| 오행 | 크립토 섹터 | 특성 |
-|------|------------|------|
-| 火 (Fire) | MEME, AI, VOLATILE | 폭발적 변동성 |
-| 土 (Earth) | INFRASTRUCTURE, LAYER1, BTC | 기반 자산 |
-| 水 (Water) | DEFI, EXCHANGE, LIQUIDITY | 유동성/흐름 |
-| 金 (Metal) | RWA, STABLECOIN | 가치 저장 |
-| 木 (Wood) | NEW_LISTING, GAMEFI, NFT | 초기 성장 |
+| 오행 | 크립토 섹터 | 특성 | 근거 |
+|------|------------|------|------|
+| 火 (Fire) | MEME, AI, VOLATILE | 폭발적 변동성 | 화(火) = 빠르고 뜨거운 에너지 |
+| 土 (Earth) | INFRASTRUCTURE, LAYER1, BTC | 기반 자산 | 토(土) = 안정적 기반, 중심 |
+| 水 (Water) | DEFI, EXCHANGE, LIQUIDITY | 유동성/흐름 | 수(水) = 흐름, 순환 |
+| 金 (Metal) | RWA, STABLECOIN | 가치 저장 | 금(金) = 단단한 가치 |
+| 木 (Wood) | NEW_LISTING, GAMEFI, NFT | 초기 성장 | 목(木) = 새싹, 성장 |
+
+> ⚠️ **투명한 공개**: 섹터 매핑은 오행 철학 기반 **Logic-based Heuristic**입니다.
+> 변동성 상관계수(0.108)는 통계적으로 검증되었으나, 섹터 정확도는 V2에서 백테스트 예정입니다.
+
+**봇 연동 예시 (if 문 하나로 끝):**
+```python
+oracle = requests.post(url, json={"target_date": today}).json()
+
+# 변동성 타이밍 (수학적 검증)
+if oracle["trading_luck_score"] >= 0.7:
+    # 섹터 필터 (오행 논리)
+    if "NEW_LISTING" in oracle["favorable_sectors"]:
+        bet_size = 1000  # 운세 좋으니 평소 2배
+    else:
+        bet_size = 500
+    execute_trade(bet_size)
+else:
+    pass  # 관망
+```
+
 
 ---
 
@@ -264,13 +309,20 @@ curl -X POST http://localhost:8000/api/v1/daily-luck \
 
 ## 📈 로드맵
 
-- [x] Phase 1: 핵심 엔진 개발
-- [x] Phase 2: 백테스트 검증
-- [x] Phase 3: GAME SDK 통합
-- [x] Phase 4: FastAPI 서버 구현
-- [ ] Phase 5: VPS 배포
-- [ ] Phase 6: Virtuals 마켓플레이스 등록
-- [ ] Phase 7: 마케팅 및 사용자 확보
+### ✅ V1 (현재 - 완료)
+- [x] 사주 엔진 개발 (TrinityEngineV2)
+- [x] Yahoo Finance 기반 변동성 백테스트 (N=412, corr=0.108)
+- [x] GAME SDK 통합 (Trinity_Alpha_Oracle)
+- [x] FastAPI REST API 서버
+- [x] VPS 24/7 배포 (systemd + Swap)
+- [x] HEAD /health 지원 (모니터링 봇 호환)
+
+### 🔜 V2 (예정)
+- [ ] **섹터 정확도 백테스트**: "목(木)의 날에 NFT/GAMEFI가 실제로 몇 % 아웃퍼폼했나?"
+- [ ] 월봉/일봉 단위 세분화 점수
+- [ ] Virtuals 마켓플레이스 정식 등록
+- [ ] 웹훅(Webhook) 지원 (봇이 pull 대신 push 수신)
+- [ ] 개인화 API (생년월일 기반 맞춤 운세)
 
 ---
 
