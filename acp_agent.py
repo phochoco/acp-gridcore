@@ -271,15 +271,18 @@ class TrinityACPAgent:
         if self.game_agent:
             print("\n✅ GAME SDK integration active")
             print("🔗 Agent registered with Virtuals Protocol")
-            print("\n📡 Agent is ready to receive requests from GAME platform...")
-            print("Press Ctrl+C to stop\n")
+            print("\n📡 Compiling agent workers...")
             
             try:
-                # GAME SDK는 자동으로 요청을 처리
-                # Agent.compile() 호출 후 자동으로 활성화됨
-                import time
-                while True:
-                    time.sleep(1)
+                # compile() 호출 필수 - Worker를 GAME 플랫폼에 등록
+                self.game_agent.compile()
+                print("✅ Workers compiled successfully!")
+                print("\n🚀 Agent is running and ready to receive requests from GAME platform...")
+                print("Press Ctrl+C to stop\n")
+                
+                # GAME SDK run() 호출 - 자동으로 요청 처리
+                self.game_agent.run()
+                
             except KeyboardInterrupt:
                 print("\n\n👋 Agent stopped by user")
         else:
