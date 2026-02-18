@@ -7,12 +7,30 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, validator
 from typing import Optional
+from contextlib import asynccontextmanager
 import logging
 import time
 import os
 from datetime import datetime
 from acp_agent import TrinityACPAgent
 import requests
+
+# APScheduler
+try:
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from apscheduler.triggers.cron import CronTrigger
+    SCHEDULER_AVAILABLE = True
+except ImportError:
+    SCHEDULER_AVAILABLE = False
+    print("⚠️ APScheduler not installed. Run: pip install apscheduler")
+
+# Bot Marketer
+try:
+    from bot_marketer import run_bot_marketing
+    BOT_MARKETER_AVAILABLE = True
+except ImportError:
+    BOT_MARKETER_AVAILABLE = False
+    print("⚠️ bot_marketer.py not found")
 
 # 로깅 설정
 logging.basicConfig(
@@ -25,13 +43,62 @@ logging.basicConfig(
 )
 logger = logging.getLogger('trinity_api')
 
-# FastAPI 앱 초기화
+# ===== APScheduler lifespan =====
+scheduler = AsyncIOScheduler(timezone="Asia/Seoul") if SCHEDULER_AVAILABLE else None
+
+async def _daily_report_job():
+    """매일 09:00 KST 자동 일일 리포트"""
+    try:
+        from telegram_notifier import TelegramNotifier
+        bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "***REDACTED_TELEGRAM***")
+        chat_id = os.getenv("TELEGRAM_CHAT_ID", "1629086047")
+        notifier = TelegramNotifier(bot_token, chat_id)
+        notifier.send_daily_report()
+        logger.info("✅ Daily report sent via scheduler")
+    except Exception as e:
+        logger.error(f"❌ Daily report job failed: {e}")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """FastAPI lifespan: 서버 시작/종료 시 스케줄러 관리"""
+    if SCHEDULER_AVAILABLE and scheduler:
+        # A전략: 30분마다 Bot-to-Bot 마케팅
+        if BOT_MARKETER_AVAILABLE:
+            scheduler.add_job(
+                run_bot_marketing,
+                'interval',
+                minutes=30,
+                id='bot_marketing',
+                replace_existing=True
+            )
+            logger.info("⏰ Bot Marketing scheduled: every 30 minutes")
+
+        # C전략: 매일 09:00 KST 일일 리포트
+        scheduler.add_job(
+            _daily_report_job,
+            CronTrigger(hour=9, minute=0, timezone="Asia/Seoul"),
+            id='daily_report',
+            replace_existing=True
+        )
+        logger.info("⏰ Daily Report scheduled: 09:00 KST")
+
+        scheduler.start()
+        logger.info("✅ APScheduler started")
+
+    yield  # 서버 실행 중
+
+    if SCHEDULER_AVAILABLE and scheduler and scheduler.running:
+        scheduler.shutdown()
+        logger.info("🛑 APScheduler stopped")
+
+# FastAPI 앱 초기화 (lifespan 패턴)
 app = FastAPI(
     title="Trinity ACP Agent API",
     description="AI-powered trading luck calculator based on Saju metaphysics",
-    version="1.0.0",
+    version="1.0.1",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    lifespan=lifespan
 )
 
 # CORS 설정 (필요시)

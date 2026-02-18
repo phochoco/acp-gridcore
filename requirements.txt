@@ -25,6 +25,9 @@ yfinance>=0.2.0
 # 환경 변수 관리
 python-dotenv>=1.0.0
 
+# 스케줄러 (Bot Marketing + Daily Report 자동화)
+apscheduler>=3.10.0
+
 # 테스트
 pytest>=7.4.0
 pytest-asyncio>=0.21.0
