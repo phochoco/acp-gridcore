@@ -126,11 +126,17 @@ def _call_target_agent(agent: Dict, token_address: str) -> Optional[Dict]:
 
         response = requests.post(acp_api_url, json=payload, headers=headers, timeout=15)
         
-        if response.status_code == 200:
-            return response.json()
+        if response.status_code in (200, 201, 202, 204):
+            # 204 = No Content (성공이지만 응답 본문 없음)
+            print(f"✅ Agent call success: HTTP {response.status_code}")
+            try:
+                return response.json() if response.text else {"status": "success", "http_code": response.status_code}
+            except:
+                return {"status": "success", "http_code": response.status_code}
         else:
             print(f"⚠️ Agent call failed: {response.status_code} — {response.text[:100]}")
             return None
+
 
     except Exception as e:
         print(f"⚠️ Error calling {agent['name']}: {e}")
