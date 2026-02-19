@@ -361,5 +361,12 @@ async def run_bot_marketing():
 
 # ===== 직접 실행 테스트 =====
 if __name__ == "__main__":
-    print("🧪 Testing bot marketing module...")
-    asyncio.run(run_bot_marketing())
+    import time
+    print("🤖 Trinity Bot Marketer started — 30min cycle")
+    while True:
+        try:
+            asyncio.run(run_bot_marketing())
+        except Exception as e:
+            print(f"⚠️ Cycle error: {e}")
+        print("⏳ Sleeping 30 minutes until next cycle...")
+        time.sleep(1800)  # 30분
