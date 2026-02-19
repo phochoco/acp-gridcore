@@ -15,6 +15,18 @@ from datetime import datetime
 from acp_agent import TrinityACPAgent
 import requests
 
+# Rate Limiting
+try:
+    from slowapi import Limiter, _rate_limit_exceeded_handler
+    from slowapi.util import get_remote_address
+    from slowapi.errors import RateLimitExceeded
+    limiter = Limiter(key_func=get_remote_address)
+    RATE_LIMIT_AVAILABLE = True
+except ImportError:
+    limiter = None
+    RATE_LIMIT_AVAILABLE = False
+    print("⚠️ slowapi not installed. Run: pip install slowapi")
+
 # APScheduler
 try:
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -100,6 +112,11 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=lifespan
 )
+
+# Rate Limiting 설정
+if RATE_LIMIT_AVAILABLE:
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS 설정 (필요시)
 app.add_middleware(
@@ -287,7 +304,8 @@ def health_check():
     }
 
 @app.post("/api/v1/daily-luck", tags=["Trading Luck"])
-def get_daily_luck(request: DailyLuckRequest):
+@limiter.limit("10/minute")
+def get_daily_luck(request: Request, body: DailyLuckRequest):
     """
     Daily trading luck score calculation
 
@@ -304,11 +322,11 @@ def get_daily_luck(request: DailyLuckRequest):
     - **wealth_opportunity**: Wealth opportunity level (HIGH/MEDIUM/LOW)
     """
     try:
-        logger.info(f"Daily luck request: date={request.target_date}, birth={request.user_birth_data}")
+        logger.info(f"Daily luck request: date={body.target_date}, birth={body.user_birth_data}")
         
         result = agent.get_daily_luck(
-            target_date=request.target_date,
-            user_birth_data=request.user_birth_data
+            target_date=body.target_date,
+            user_birth_data=body.user_birth_data
         )
         
         logger.info(f"Daily luck result: score={result['trading_luck_score']}")
@@ -322,7 +340,8 @@ def get_daily_luck(request: DailyLuckRequest):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.post("/api/v1/verify-accuracy", tags=["Verification"])
-def verify_accuracy(request: VerifyAccuracyRequest):
+@limiter.limit("5/minute")
+def verify_accuracy(request: Request, body: VerifyAccuracyRequest):
     """
     Backtest accuracy verification
 
@@ -341,9 +360,9 @@ def verify_accuracy(request: VerifyAccuracyRequest):
     - **cached**: Whether result is from cache
     """
     try:
-        logger.info(f"Verify accuracy request: force_refresh={request.force_refresh}")
+        logger.info(f"Verify accuracy request: force_refresh={body.force_refresh}")
         
-        result = agent.verify_accuracy(force_refresh=request.force_refresh)
+        result = agent.verify_accuracy(force_refresh=body.force_refresh)
         
         logger.info(f"Verify accuracy result: correlation={result['correlation_coefficient']}, cached={result['cached']}")
         return result
@@ -382,7 +401,8 @@ def _score_to_signal(score: float) -> str:
 
 
 @app.post("/api/v1/deep-luck", tags=["Trading Luck"])
-def get_deep_luck(request: DeepLuckRequest):
+@limiter.limit("3/minute")
+def get_deep_luck(request: Request, body: DeepLuckRequest):
     """
     [Premium $0.50] 24-Hour Hourly Saju Analysis — Gridcore Saju Hourly V1
 
@@ -409,10 +429,10 @@ def get_deep_luck(request: DeepLuckRequest):
         hourly_raw = []
         for h in range(24):
             res = engine.calculate_daily_luck(
-                birth_date=request.birth_date,
+                birth_date=body.birth_date,
                 birth_time=f"{h:02d}:00",
-                target_date=request.target_date,
-                gender=request.gender
+                target_date=body.target_date,
+                gender=body.gender
             )
             hourly_raw.append({
                 "hour": h,
