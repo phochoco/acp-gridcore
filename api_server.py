@@ -263,7 +263,7 @@ async def log_requests(request: Request, call_next):
 # Routes
 @app.get("/", tags=["Root"])
 def root():
-    """API 루트 엔드포인트"""
+    """API root endpoint"""
     return {
         "name": "Trinity ACP Agent API",
         "version": "1.0.0",
@@ -274,7 +274,7 @@ def root():
 
 @app.api_route("/health", methods=["GET", "HEAD"], tags=["Monitoring"])
 def health_check():
-    """헬스체크 엔드포인트 (GET/HEAD 모두 지원)"""
+    """Health check endpoint (supports both GET and HEAD)"""
     uptime_seconds = time.time() - start_time
     uptime_hours = uptime_seconds / 3600
     
@@ -289,19 +289,19 @@ def health_check():
 @app.post("/api/v1/daily-luck", tags=["Trading Luck"])
 def get_daily_luck(request: DailyLuckRequest):
     """
-    일일 트레이딩 운세 점수 계산
-    
-    사주명리학 기반으로 특정 날짜의 트레이딩 운세를 0.0-1.0 범위로 정량화합니다.
-    
-    - **target_date**: 분석 대상 날짜 (YYYY-MM-DD)
-    - **user_birth_data**: 사용자 생년월일시 (선택, YYYY-MM-DD HH:MM)
-    
+    Daily trading luck score calculation
+
+    Quantifies trading luck for a specific date (0.0–1.0) based on Saju (Four Pillars) metaphysics.
+
+    - **target_date**: Target date to analyze (YYYY-MM-DD)
+    - **user_birth_data**: Optional user birth datetime ('YYYY-MM-DD HH:MM')
+
     Returns:
-    - **trading_luck_score**: 정규화된 운세 점수 (0.0-1.0)
-    - **favorable_sectors**: 유리한 크립토 섹터 리스트
-    - **volatility_index**: 변동성 지수 (HIGH/LOW)
-    - **market_sentiment**: 시장 심리 (STABLE/VOLATILE)
-    - **wealth_opportunity**: 재물 기회 (HIGH/MEDIUM/LOW)
+    - **trading_luck_score**: Normalized luck score (0.0–1.0)
+    - **favorable_sectors**: List of favorable crypto sectors
+    - **volatility_index**: Volatility level (HIGH/LOW)
+    - **market_sentiment**: Market sentiment (STABLE/VOLATILE)
+    - **wealth_opportunity**: Wealth opportunity level (HIGH/MEDIUM/LOW)
     """
     try:
         logger.info(f"Daily luck request: date={request.target_date}, birth={request.user_birth_data}")
@@ -324,18 +324,21 @@ def get_daily_luck(request: DailyLuckRequest):
 @app.post("/api/v1/verify-accuracy", tags=["Verification"])
 def verify_accuracy(request: VerifyAccuracyRequest):
     """
-    백테스트 신뢰성 검증
-    
-    과거 데이터를 기반으로 운세 점수와 BTC 가격 변동의 상관관계를 분석합니다.
-    
-    - **force_refresh**: 캐시 강제 갱신 여부 (기본값: false)
-    
+    Backtest accuracy verification
+
+    Analyzes the correlation between luck scores and BTC price movements
+    using 10 years of real Binance BTCUSDT daily data (N=3,058 days, 2015–2025).
+
+    - **force_refresh**: Force cache refresh (default: false)
+
     Returns:
-    - **correlation_coefficient**: 상관계수 (0.77)
-    - **sample_size**: 분석 샘플 크기
-    - **accuracy_rate**: 정확도 (85%)
-    - **top_signals**: 상위 시그널 리스트
-    - **cached**: 캐시 사용 여부
+    - **correlation_coefficient**: Pearson correlation vs next-day BTC return
+    - **volatility_correlation**: Correlation vs daily volatility
+    - **sample_size**: Number of days analyzed
+    - **high_luck_win_rate_pct**: Win rate on high-luck days (score >= 0.7)
+    - **edge_pct**: Return edge vs low-luck days
+    - **top_signals**: Signal breakdown with win rates
+    - **cached**: Whether result is from cache
     """
     try:
         logger.info(f"Verify accuracy request: force_refresh={request.force_refresh}")
@@ -381,10 +384,20 @@ def _score_to_signal(score: float) -> str:
 @app.post("/api/v1/deep-luck", tags=["Trading Luck"])
 def get_deep_luck(request: DeepLuckRequest):
     """
-    [Premium $0.50] 24시간 시주 분석 — Gridcore Saju Hourly V1
+    [Premium $0.50] 24-Hour Hourly Saju Analysis — Gridcore Saju Hourly V1
 
-    사주팔자(연·월·일·시) 완전체 분석으로 24시간 각각의 트레이딩 운세를 제공.
-    Golden Cross Hour(저리스크+고수익) 및 Avoid Window(충 발생 구간) 포함.
+    Full Four Pillars (Year/Month/Day/Hour) analysis providing hourly trading luck scores for all 24 hours.
+    Includes Golden Cross Hours (low risk + high reward) and Avoid Windows (clash periods).
+
+    - **birth_date**: Entity genesis date (YYYY-MM-DD). Use token/coin launch date for crypto bots.
+    - **birth_time**: Birth time in HH:MM format (default: 12:00)
+    - **target_date**: Date to analyze (YYYY-MM-DD)
+    - **gender**: M or F
+
+    Returns:
+    - **strategy**: Recommended action, best entry window, max score
+    - **hourly_forecast**: 24-hour breakdown with score, signal, element, golden flag
+    - **hourly_analysis**: Max/min score spread and volatility warning
     """
     import time as _time
     t_start = _time.time()
@@ -502,9 +515,9 @@ def get_deep_luck(request: DeepLuckRequest):
 @app.get("/api/v1/stats", tags=["Monitoring"])
 def get_stats():
     """
-    API 통계 조회
-    
-    서버 가동 시간, 총 요청 수 등의 통계를 반환합니다.
+    API statistics
+
+    Returns server uptime, total request count, and requests per hour.
     """
     uptime_seconds = time.time() - start_time
     
