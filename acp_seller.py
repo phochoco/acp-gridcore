@@ -25,6 +25,7 @@ load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "1629086047")
+AGENT_WALLET = os.getenv("BUYER_AGENT_WALLET_ADDRESS", "").lower()  # 자기 지갑 주소 (skip 용)
 
 # handlers.py 직접 import (Trinity 엔진 직접 호출)
 try:
@@ -105,6 +106,17 @@ def on_new_task(job, memo_to_sign=None):
         job_id = job.id
         service_name = str(job.name or '')
         requirement = _safe_parse_requirement(job.requirement)
+
+        # ★ 자기 자신이 보낸 job 스킵 (마케팅 봇이 구매자로 보낸 job)
+        client_addr = str(getattr(job, 'client_address', '') or '').lower()
+        provider_addr = str(getattr(job, 'provider_address', '') or '').lower()
+        if AGENT_WALLET and client_addr == AGENT_WALLET:
+            print(f"[Seller] SKIP Job {job_id} — self-sent job (we are the buyer)")
+            return
+        # 우리가 provider도 아닌 경우 스킵 (우리 서비스가 아닌 job)
+        if AGENT_WALLET and provider_addr and provider_addr != AGENT_WALLET:
+            print(f"[Seller] SKIP Job {job_id} — not our service (provider={provider_addr[:10]}...)")
+            return
 
         # ★ target_date 빈 값이면 오늘 날짜로 기본값
         if 'target_date' in requirement and not requirement.get('target_date'):
