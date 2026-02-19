@@ -109,15 +109,28 @@ def _cmd_sales(chat_id: str):
     sales = log.get("sales", [])
 
     # 서비스별 집계
-    daily_count = sum(1 for s in sales if s.get("service") == "dailyLuck")
-    deep_count = sum(1 for s in sales if s.get("service") == "deepLuck")
+    def _count(svc): return sum(1 for s in sales if s.get("service") == svc)
+    daily_count   = _count("dailyLuck") + _count("dailySignal")
+    deep_count    = _count("deepLuck")  + _count("deepSignal")
+    sector_count  = _count("sectorFeed")
+    match_count   = _count("agentMatch")
+
+    oracle_revenue = round(
+        sector_count * 0.01 + deep_count * 0.50 + match_count * 2.00, 4
+    )
 
     _send(chat_id,
         f"💰 <b>Trinity Sales Report</b>\n\n"
         f"📊 Total Sales: <b>{total}</b>\n"
         f"💵 Total Revenue: <b>${revenue:.4f} USDC</b>\n\n"
-        f"• dailyLuck ($0.01): {daily_count}건\n"
-        f"• deepLuck ($0.50): {deep_count}건\n\n"
+        f"――― Legacy ―――\n"
+        f"• dailyLuck ($0.01): {_count('dailyLuck')}건\n"
+        f"• deepLuck  ($0.50): {_count('deepLuck')}건\n\n"
+        f"――― Oracle ―――\n"
+        f"• sectorFeed  ($0.01): {sector_count}건\n"
+        f"• dailySignal ($0.01): {_count('dailySignal')}건\n"
+        f"• deepSignal  ($0.50): {_count('deepSignal')}건\n"
+        f"• agentMatch  ($2.00): {match_count}건\n\n"
         f"🕐 {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}"
     )
 

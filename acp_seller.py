@@ -357,8 +357,11 @@ def run_seller():
 
         _send_telegram(
             "[ONLINE] <b>Trinity Seller Service Started</b>\n"
-            "- dailyLuck: $0.01 USDC\n"
-            "- deepLuck: $0.50 USDC\n"
+            "— Legacy —\n"
+            "- dailyLuck: $0.01 | deepLuck: $0.50\n"
+            "— Oracle —\n"
+            "- sectorFeed: $0.01 | dailySignal: $0.01\n"
+            "- deepSignal: $0.50 | agentMatch: $2.00\n"
             "- Flow: accept → pay → deliver\n"
             "- Telegram Bot: /sales /last /status /help"
         )
