@@ -61,18 +61,44 @@ def _send_telegram(message: str):
         pass
 
 
+TRINITY_API = "http://localhost:8000"
+
 def _call_handler(service: str, requirement: dict) -> dict:
-    """handlers.py를 통해 Trinity 엔진 직접 호출"""
+    """Trinity 엔진 직접 호출 또는 내부 API 위임"""
     try:
-        if not HANDLERS_AVAILABLE:
+        if not HANDLERS_AVAILABLE and service in ("dailyLuck", "deepLuck"):
             return {"error": "handlers.py not available"}
-        if service == "dailyLuck":
+
+        if service == "dailyLuck" or service == "dailySignal":
             result_str = _handlers.handle_daily_luck(requirement)
-        elif service == "deepLuck":
-            result_str = _handlers.handle_deep_luck(requirement)
+            return json.loads(result_str)
+
+        elif service == "deepLuck" or service == "deepSignal":
+            # deepSignal의 경우 agent_birth_date 파라미터 이름 매핑
+            req = dict(requirement)
+            if "agent_birth_date" in req:
+                req["birth_date"] = req.pop("agent_birth_date")
+            if "agent_birth_time" in req:
+                req["birth_time"] = req.pop("agent_birth_time")
+            result_str = _handlers.handle_deep_luck(req)
+            return json.loads(result_str)
+
+        elif service == "sectorFeed":
+            # sectorFeed: api_server.py 내부 엔드포인트 위임 (CoinGecko 호출 포함)
+            params = {}
+            if "target_date" in requirement:
+                params["target_date"] = requirement["target_date"]
+            r = requests.get(f"{TRINITY_API}/api/v1/sector-feed", params=params, timeout=15)
+            return r.json() if r.status_code == 200 else {"error": f"sectorFeed error: {r.status_code}"}
+
+        elif service == "agentMatch":
+            # agentMatch: api_server.py 내부 엔드포인트 위임
+            r = requests.post(f"{TRINITY_API}/api/v1/agent-match", json=requirement, timeout=30)
+            return r.json() if r.status_code == 200 else {"error": f"agentMatch error: {r.status_code}"}
+
         else:
             return {"error": f"Unknown service: {service}"}
-        return json.loads(result_str)
+
     except Exception as e:
         print(f"[Seller] Handler error: {e}")
         return {"error": str(e)}
@@ -130,12 +156,24 @@ def on_new_task(job, memo_to_sign=None):
 
         # 서비스 라우팅
         service_lower = service_name.lower()
-        if 'dailyluck' in service_lower or 'target_date' in requirement:
-            service_key = "dailyLuck"
+        if 'sectorfeed' in service_lower or service_name == 'sectorFeed':
+            service_key = "sectorFeed"
+            revenue_val = 0.01
+        elif 'agentmatch' in service_lower or service_name == 'agentMatch' or 'agents' in requirement:
+            service_key = "agentMatch"
+            revenue_val = 2.00
+        elif 'deepsignal' in service_lower or service_name == 'deepSignal' or 'agent_birth_date' in requirement:
+            service_key = "deepSignal"
+            revenue_val = 0.50
+        elif 'dailysignal' in service_lower or service_name == 'dailySignal':
+            service_key = "dailySignal"
             revenue_val = 0.01
         elif 'deepluck' in service_lower or 'birth_date' in requirement:
             service_key = "deepLuck"
             revenue_val = 0.50
+        elif 'dailyluck' in service_lower or 'target_date' in requirement:
+            service_key = "dailyLuck"
+            revenue_val = 0.01
         else:
             print(f"[Seller] Unknown service: {service_name}")
             job.reject(f"Unknown service: {service_name}")
@@ -219,12 +257,24 @@ def on_evaluate(job):
             service_name = str(job.name or '')
             requirement = _safe_parse_requirement(job.requirement)
             service_lower = service_name.lower()
-            if 'dailyluck' in service_lower or 'target_date' in requirement:
-                service_key = "dailyLuck"
+            if 'sectorfeed' in service_lower or service_name == 'sectorFeed':
+                service_key = "sectorFeed"
+                revenue_val = 0.01
+            elif 'agentmatch' in service_lower or service_name == 'agentMatch' or 'agents' in requirement:
+                service_key = "agentMatch"
+                revenue_val = 2.00
+            elif 'deepsignal' in service_lower or service_name == 'deepSignal' or 'agent_birth_date' in requirement:
+                service_key = "deepSignal"
+                revenue_val = 0.50
+            elif 'dailysignal' in service_lower or service_name == 'dailySignal':
+                service_key = "dailySignal"
                 revenue_val = 0.01
             elif 'deepluck' in service_lower or 'birth_date' in requirement:
                 service_key = "deepLuck"
                 revenue_val = 0.50
+            elif 'dailyluck' in service_lower or 'target_date' in requirement:
+                service_key = "dailyLuck"
+                revenue_val = 0.01
             else:
                 print(f"[Seller] Unknown service in evaluate: {service_name}")
                 job.evaluate(False, "Unknown service")
@@ -285,7 +335,7 @@ def run_seller():
 
         print(f"\n[Seller] Starting Trinity ACP Seller Service...")
         print(f"[Seller] Agent Wallet: {agent_wallet}")
-        print(f"[Seller] Services: dailyLuck ($0.01), deepLuck ($0.50)")
+        print(f"[Seller] Services: sectorFeed ($0.01) | dailySignal ($0.01) | deepSignal ($0.50) | agentMatch ($2.00) | dailyLuck ($0.01) | deepLuck ($0.50)")
         print(f"[Seller] Flow: on_new_task(accept) → buyer pays → on_evaluate(deliver)\n")
 
         acp_client = VirtualsACP(

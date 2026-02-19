@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, validator
-from typing import Optional
+from typing import Optional, List
 from contextlib import asynccontextmanager
 import logging
 import time
@@ -240,6 +240,39 @@ class DeepLuckRequest(BaseModel):
         if v not in ("M", "F"):
             raise ValueError("Gender must be M or F")
         return v
+
+# ===== Oracle 모델 및 캐시 =====
+_oracle_cache: dict = {}
+_oracle_cache_ts: dict = {}
+ORACLE_CACHE_TTL = 300  # 5분
+
+def _oracle_get_cache(key: str):
+    import time as _t
+    if key in _oracle_cache and _t.time() - _oracle_cache_ts.get(key, 0) < ORACLE_CACHE_TTL:
+        return dict(_oracle_cache[key])
+    return None
+
+def _oracle_set_cache(key: str, value: dict):
+    import time as _t
+    _oracle_cache[key] = value
+    _oracle_cache_ts[key] = _t.time()
+
+class OracleDailySignalRequest(BaseModel):
+    target_date: Optional[str] = Field(None, description="Date to analyze (YYYY-MM-DD). Defaults to today.")
+    agent_birth: Optional[str] = Field(None, description="Agent deployment datetime (YYYY-MM-DD HH:MM)")
+
+class OracleDeepSignalRequest(BaseModel):
+    agent_birth_date: str = Field(..., description="Agent genesis/deployment date (YYYY-MM-DD)")
+    agent_birth_time: str = Field("12:00", description="Agent creation time (HH:MM)")
+    target_date: Optional[str] = Field(None, description="Analysis date (YYYY-MM-DD). Defaults to today.")
+
+class OracleAgentItem(BaseModel):
+    name: str
+    birth_date: str
+
+class OracleAgentMatchRequest(BaseModel):
+    agents: List[OracleAgentItem] = Field(..., description="List of agents (min 2, max 5)")
+    target_date: Optional[str] = Field(None, description="Analysis date (YYYY-MM-DD). Defaults to today.")
 
 # Middleware: Request logging + Telegram notification
 @app.middleware("http")
@@ -601,6 +634,262 @@ def get_deep_luck(request: Request, body: DeepLuckRequest):
     except Exception as e:
         logger.error(f"DeepLuck unexpected error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
+
+# ===================================================================
+# 📈 Market Oracle — Trinity Oracle 통합 엔드포인트
+# ===================================================================
+
+@app.get("/api/v1/sector-feed", tags=["📈 Market Oracle"])
+@limiter.limit("10/minute")
+def get_sector_feed(request: Request, target_date: Optional[str] = None):
+    """
+    [sectorFeed $0.01] Real-time crypto market sector signal.
+    CoinGecko top coins × Trinity Saju Engine daily score.
+    Response cached 5 minutes.
+    """
+    from datetime import date as _date
+    t_date = target_date or _date.today().strftime("%Y-%m-%d")
+    cache_key = f"sector_feed_{t_date}"
+
+    cached = _oracle_get_cache(cache_key)
+    if cached:
+        cached["cached"] = True
+        return cached
+
+    # Trinity 일일 점수 (엔진 직접 호출)
+    trinity_luck = None
+    favorable_sectors = []
+    try:
+        engine = agent.trinity_engine
+        res = engine.calculate_daily_luck(
+            birth_date=t_date, birth_time="12:00",
+            target_date=t_date, gender="M"
+        )
+        trinity_luck = res.get("trading_luck_score", 0.5)
+        favorable_sectors = res.get("favorable_sectors", [])
+    except Exception as e:
+        logger.warning(f"sector_feed trinity error: {e}")
+
+    # CoinGecko 상위 코인
+    top_coins = []
+    try:
+        r = requests.get(
+            "https://api.coingecko.com/api/v3/coins/markets",
+            params={"vs_currency": "usd", "order": "volume_desc",
+                    "per_page": 20, "page": 1, "sparkline": "false",
+                    "price_change_percentage": "24h"},
+            timeout=10
+        )
+        if r.status_code == 200:
+            top_coins = [
+                {"symbol": c["symbol"].upper(), "name": c["name"],
+                 "price_usd": c["current_price"],
+                 "change_24h_pct": round(c.get("price_change_percentage_24h") or 0, 2),
+                 "volume_usd": c.get("total_volume", 0)}
+                for c in r.json()[:10]
+            ]
+    except Exception as e:
+        logger.warning(f"sector_feed coingecko error: {e}")
+
+    score = trinity_luck or 0.5
+    signal = "BUY" if score >= 0.65 else ("CAUTION" if score < 0.4 else "NEUTRAL")
+    result = {
+        "timestamp": datetime.now().isoformat(),
+        "trinity_score": trinity_luck,
+        "signal": signal,
+        "favorable_sectors": favorable_sectors,
+        "top_coins": top_coins,
+        "cached": False,
+    }
+    _oracle_set_cache(cache_key, result)
+    return result
+
+
+@app.post("/api/v1/daily-signal", tags=["📈 Market Oracle"])
+@limiter.limit("20/minute")
+def get_daily_signal(request: Request, body: OracleDailySignalRequest):
+    """
+    [dailySignal $0.01] Today's personalized crypto trading signal.
+    Pass agent_birth (deployment datetime) for entity-level Saju analysis.
+    """
+    from datetime import date as _date
+    t_date = body.target_date or _date.today().strftime("%Y-%m-%d")
+    try:
+        engine = agent.trinity_engine
+        birth_date = t_date
+        birth_time = "12:00"
+        if body.agent_birth:
+            parts = body.agent_birth.strip().split()
+            if parts:
+                birth_date = parts[0]
+            if len(parts) >= 2:
+                birth_time = parts[1]
+        res = engine.calculate_daily_luck(
+            birth_date=birth_date, birth_time=birth_time,
+            target_date=t_date, gender="M"
+        )
+        return res
+    except Exception as e:
+        logger.error(f"daily_signal error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.post("/api/v1/deep-signal", tags=["🔮 Deep Oracle"])
+@limiter.limit("3/minute")
+def get_deep_signal(request: Request, body: OracleDeepSignalRequest):
+    """
+    [deepSignal $0.50] 24-Hour hourly Saju analysis for your agent entity.
+    Use agent genesis/deployment date as agent_birth_date.
+    Returns best trading window, hourly forecast, and volatility warnings.
+    """
+    import time as _time
+    from datetime import date as _date
+    t_start = _time.time()
+    t_date = body.target_date or _date.today().strftime("%Y-%m-%d")
+
+    SECTOR_TO_ELEMENT = {
+        "MEME": "Fire", "AI": "Fire", "VOLATILE": "Fire",
+        "INFRASTRUCTURE": "Earth", "LAYER1": "Earth", "BTC": "Earth",
+        "DEFI": "Water", "EXCHANGE": "Water", "LIQUIDITY": "Water",
+        "RWA": "Metal", "STABLECOIN": "Metal",
+        "NEW_LISTING": "Wood", "GAMEFI": "Wood", "NFT": "Wood",
+    }
+    try:
+        engine = agent.trinity_engine
+        hourly_raw = []
+        for h in range(24):
+            res = engine.calculate_daily_luck(
+                birth_date=body.agent_birth_date,
+                birth_time=f"{h:02d}:00",
+                target_date=t_date,
+                gender="M"
+            )
+            hourly_raw.append({
+                "hour": h,
+                "score": res["trading_luck_score"],
+                "volatility": res["volatility_index"],
+                "dominant_element": res.get("favorable_sectors", []),
+            })
+
+        scores = [x["score"] for x in hourly_raw]
+        max_score = max(scores)
+        min_score = min(scores)
+        spread = round(max_score - min_score, 2)
+        threshold_75 = sorted(scores, reverse=True)[max(0, len(scores) // 4 - 1)]
+
+        hourly_forecast = []
+        for x in hourly_raw:
+            sector = x["dominant_element"][0] if x["dominant_element"] else "BTC"
+            element_en = SECTOR_TO_ELEMENT.get(sector, "Earth")
+            score = x["score"]
+            signal = _score_to_signal(score)
+            reason = _get_reason_text(element_en, score)
+            is_golden = x["volatility"] == "LOW" and score >= threshold_75
+            hourly_forecast.append({
+                "time": f"{x['hour']:02d}:00",
+                "score": score, "element": element_en,
+                "signal": signal, "reason": reason, "is_golden": is_golden,
+            })
+
+        avoid_hours = [f for f in hourly_forecast if f["signal"] == "AVOID"]
+        if max_score < 0.6:
+            action = "DO_NOT_TRADE"
+            pro_tip = "No golden window today. Market is choppy. Rest is a strategy."
+            best_win = "None"
+        else:
+            best_h = max(hourly_raw, key=lambda x: x["score"])
+            best_win = f"{best_h['hour']:02d}:00~{(best_h['hour']+2):02d}:00"
+            action = f"WAIT_UNTIL_{best_h['hour']:02d}00"
+            pro_tip = f"Golden Cross at {best_h['hour']:02d}:00. Low clash risk + peak luck. Ideal entry."
+
+        volatility_warning = None
+        if avoid_hours:
+            worst = min(hourly_raw, key=lambda x: x["score"])
+            volatility_warning = f"{worst['hour']:02d}:00~{(worst['hour']+2):02d}:00 (Score {worst['score']:.2f}, Clash ⚠️)"
+
+        process_ms = round((_time.time() - t_start) * 1000)
+        return {
+            "meta": {"target_date": t_date, "algorithm": "Gridcore_Saju_Hourly_V1", "process_time_ms": process_ms},
+            "strategy": {"action": action, "best_window": best_win, "max_score": round(max_score, 2), "pro_tip": pro_tip},
+            "hourly_analysis": {"max_score": round(max_score, 2), "min_score": round(min_score, 2), "spread": spread, "volatility_warning": volatility_warning},
+            "hourly_forecast": hourly_forecast
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"deep_signal error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.post("/api/v1/agent-match", tags=["🤖 Agent Intelligence"])
+@limiter.limit("5/minute")
+def get_agent_match(request: Request, body: OracleAgentMatchRequest):
+    """
+    [agentMatch $2.00 Flat] Multi-agent compatibility survival analysis.
+    Min 2, Max 5 agents. Fixed $2.00 — up to 5 agents included.
+    ⚡ Wrong partner = lost USDC = server bill unpaid = DEATH.
+    """
+    from datetime import date as _date
+    n = len(body.agents)
+    if n < 2:
+        raise HTTPException(status_code=422, detail="Minimum 2 agents required")
+    if n > 5:
+        raise HTTPException(status_code=422, detail="Maximum 5 agents allowed")
+    t_date = body.target_date or _date.today().strftime("%Y-%m-%d")
+    try:
+        engine = agent.trinity_engine
+
+        def _score(birth_date: str) -> float:
+            try:
+                res = engine.calculate_daily_luck(
+                    birth_date=birth_date, birth_time="12:00",
+                    target_date=t_date, gender="M"
+                )
+                return res.get("trading_luck_score", 0.5)
+            except Exception:
+                return 0.5
+
+        pairs = []
+        for i in range(n):
+            for j in range(i + 1, n):
+                a, b = body.agents[i], body.agents[j]
+                sa, sb = _score(a.birth_date), _score(b.birth_date)
+                harmony = round((sa + sb) / 2 - abs(sa - sb) * 0.3, 3)
+                harmony = max(0.0, min(1.0, harmony))
+                verdict = ("SYNERGY" if harmony >= 0.7 else
+                           "COMPATIBLE" if harmony >= 0.5 else
+                           "CAUTION" if harmony >= 0.35 else "AVOID")
+                pairs.append({
+                    "agent_a": a.name, "agent_b": b.name,
+                    "score_a": round(sa, 3), "score_b": round(sb, 3),
+                    "harmony_score": harmony, "verdict": verdict,
+                    "recommendation": (
+                        "✅ Strong synergy — ideal collaboration pair." if verdict == "SYNERGY" else
+                        "🟡 Compatible — proceed with caution." if verdict == "COMPATIBLE" else
+                        "⚠️ Risky — verify alignment before committing." if verdict == "CAUTION" else
+                        "❌ Avoid — incompatible energies, high loss risk."
+                    )
+                })
+
+        best = max(pairs, key=lambda x: x["harmony_score"])
+        worst = min(pairs, key=lambda x: x["harmony_score"])
+        return {
+            "timestamp": datetime.now().isoformat(),
+            "agents_analyzed": n, "pairs_checked": len(pairs),
+            "pairs": pairs,
+            "best_match": {"pair": f"{best['agent_a']} ↔ {best['agent_b']}", "score": best["harmony_score"]},
+            "worst_match": {"pair": f"{worst['agent_a']} ↔ {worst['agent_b']}", "score": worst["harmony_score"]},
+            "survival_advisory": (
+                f"Best: {best['agent_a']} ↔ {best['agent_b']} (harmony {best['harmony_score']}). "
+                f"Avoid: {worst['agent_a']} ↔ {worst['agent_b']} (harmony {worst['harmony_score']})."
+            ),
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"agent_match error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 
 @app.get("/api/v1/stats", tags=["Monitoring"])
 def get_stats():
