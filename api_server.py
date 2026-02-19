@@ -576,7 +576,7 @@ def get_deep_luck(request: Request, body: DeepLuckRequest):
 
         return {
             "meta": {
-                "target_date": request.target_date,
+                "target_date": body.target_date,
                 "algorithm": "Gridcore_Saju_Hourly_V1",
                 "process_time_ms": process_ms
             },
