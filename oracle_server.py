@@ -86,6 +86,7 @@ app = FastAPI(
         "Trinity Oracle maximizes your agent's survival probability."
     ),
     version="1.0.0",
+    openapi_url="/oracle/openapi.json",
     docs_url="/oracle/docs",
     redoc_url=None,
 )
