@@ -508,8 +508,8 @@ def get_deep_luck(request: Request, body: DeepLuckRequest):
                 "hour": h,
                 "score": res["trading_luck_score"],
                 "volatility": res["volatility_index"],
-                "dominant_element": res["favorable_sectors"],  # 오행 정보 포함
-                "keyword": res["keyword"],
+                "dominant_element": res["favorable_sectors"],
+                "keyword": res.get("keyword", "NEUTRAL"),
                 "raw": res
             })
 
