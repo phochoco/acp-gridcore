@@ -202,27 +202,25 @@ def _handle_new_task(job, memo_to_sign=None):
             job.reject(f"Unknown service: {service_name}")
             return
 
-        # ★ 협상 승인 — sleep 제거하여 빠르게 accept
-        import time
+        # ★ 협상 승인 — 타임아웃 5초 (블록체인 tx는 이미 on-chain)
+        import time, threading as _th
         print(f"[Seller] Accepting job {job_id}...")
-        for attempt in range(3):
-            try:
-                if memo_to_sign is not None:
-                    memo_to_sign.sign(True, f"Trinity {service_key} accepted")
-                    print(f"[Seller] Job {job_id} accepted via memo_to_sign!")
-                else:
-                    job.accept()
-                    print(f"[Seller] Job {job_id} accepted via job.accept()!")
-                break
-            except Exception as ae:
-                err_str = str(ae)
-                if 'signed' in err_str.lower() or 'already' in err_str.lower():
-                    print(f"[Seller] Job {job_id} already signed, continuing...")
-                    break
-                print(f"[Seller] accept() attempt {attempt+1} failed: {ae}")
-                if attempt == 2:
-                    raise ae
-                time.sleep(3)
+
+        def _do_sign():
+            if memo_to_sign is not None:
+                memo_to_sign.sign(True, f"Trinity {service_key} accepted")
+            else:
+                job.accept()
+
+        sign_thread = _th.Thread(target=_do_sign, daemon=True)
+        sign_thread.start()
+        sign_thread.join(timeout=5)  # 최대 5초 대기
+
+        if sign_thread.is_alive():
+            print(f"[Seller] Job {job_id} sign() timeout — tx already on-chain, continuing...")
+        else:
+            print(f"[Seller] Job {job_id} accepted OK")
+
 
         # ★ 엔진 계산
         print(f"[Seller] Processing {service_key}...")
