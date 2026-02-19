@@ -108,7 +108,7 @@ app = FastAPI(
     title="Trinity ACP Agent API",
     description="AI-powered trading luck calculator based on Saju metaphysics",
     version="1.0.1",
-    docs_url="/docs",
+    docs_url=None,   # 커스텀 /docs 사용
     redoc_url="/redoc",
     lifespan=lifespan
 )
@@ -276,6 +276,76 @@ async def log_requests(request: Request, call_next):
             logger.warning(f"Failed to send notification: {e}")
     
     return response
+
+# ===== Custom /docs with Buy Button =====
+from fastapi.responses import HTMLResponse
+
+@app.get("/docs", include_in_schema=False)
+async def custom_swagger_ui():
+    return HTMLResponse("""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Trinity ACP Agent API</title>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+    <style>
+        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        #buy-banner {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+        }
+        #buy-banner .brand {
+            color: #e2e8f0;
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+        #buy-banner .brand span { color: #7c3aed; }
+        #buy-banner a {
+            background: linear-gradient(135deg, #7c3aed, #a855f7);
+            color: white;
+            text-decoration: none;
+            padding: 10px 22px;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 14px;
+            letter-spacing: 0.3px;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 12px rgba(124,58,237,0.4);
+        }
+        #buy-banner a:hover {
+            background: linear-gradient(135deg, #6d28d9, #9333ea);
+            box-shadow: 0 6px 20px rgba(124,58,237,0.6);
+            transform: translateY(-1px);
+        }
+        .swagger-ui .topbar { display: none; }
+    </style>
+</head>
+<body>
+<div id="buy-banner">
+    <div class="brand">⚡ Trinity <span>Protocol</span> — Saju Oracle for Crypto Agents</div>
+    <a href="https://app.virtuals.io/virtuals/45004" target="_blank">🪙 Buy $SAJU on Virtuals</a>
+</div>
+<div id="swagger-ui"></div>
+<script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+<script>
+    SwaggerUIBundle({
+        url: '/openapi.json',
+        dom_id: '#swagger-ui',
+        presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
+        layout: 'BaseLayout',
+        deepLinking: true,
+    })
+</script>
+</body>
+</html>
+""")
 
 # Routes
 @app.get("/", tags=["Root"])
