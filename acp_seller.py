@@ -74,6 +74,10 @@ def _call_handler(service: str, requirement: dict) -> dict:
             return json.loads(result_str)
 
         elif service == "deepLuck" or service == "deepSignal":
+            # 파라미터 검증
+            bd = requirement.get("agent_birth_date") or requirement.get("birth_date")
+            if not bd:
+                return {"error": "Missing required parameter: 'birth_date' (or 'agent_birth_date'). Format: YYYY-MM-DD. Use your agent's genesis/deployment date."}
             # deepSignal의 경우 agent_birth_date 파라미터 이름 매핑
             req = dict(requirement)
             if "agent_birth_date" in req:
@@ -92,6 +96,13 @@ def _call_handler(service: str, requirement: dict) -> dict:
             return r.json() if r.status_code == 200 else {"error": f"sectorFeed error: {r.status_code}"}
 
         elif service == "agentMatch":
+            # 파라미터 검증
+            agents = requirement.get("agents", [])
+            if not agents:
+                return {"error": "Missing required parameter: 'agents' (list). Format: [{\"name\": \"AgentA\", \"birth_date\": \"YYYY-MM-DD\"}]. Use agent's genesis/deployment date as birth_date. Min 2, max 5 agents."}
+            missing = [i for i, a in enumerate(agents) if not a.get("birth_date") or not a.get("name")]
+            if missing:
+                return {"error": f"Each agent requires 'name' and 'birth_date'. Missing in agents at index: {missing}. Format: {{\"name\": \"AgentA\", \"birth_date\": \"YYYY-MM-DD\"}}"}
             # agentMatch: api_server.py 내부 엔드포인트 위임
             r = requests.post(f"{TRINITY_API}/api/v1/agent-match", json=requirement, timeout=30)
             return r.json() if r.status_code == 200 else {"error": f"agentMatch error: {r.status_code}"}
