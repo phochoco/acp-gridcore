@@ -1,0 +1,15 @@
+[Unit]
+Description=Trinity Oracle B2A Data Feed API (Port 8001)
+After=network.target trinity-acp.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/acp-gridcore
+ExecStart=/home/ubuntu/acp-gridcore/venv/bin/python3 oracle_server.py
+Restart=always
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
