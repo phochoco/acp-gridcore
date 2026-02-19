@@ -15,11 +15,15 @@ Trinity ACP Seller — 서비스 판매자 모듈
      - job.evaluate(True) 호출
 """
 import os
+import sys
 import json
 import threading
 import requests
 from datetime import datetime
 from dotenv import load_dotenv
+
+# stdout 라인버퍼링 강제 — journalctl 즉시 반영 (PYTHONUNBUFFERED 없어도 됨)
+sys.stdout.reconfigure(line_buffering=True)
 
 load_dotenv()
 
