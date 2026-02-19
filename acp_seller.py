@@ -134,10 +134,22 @@ def _safe_parse_requirement(raw) -> dict:
 
 def on_new_task(job, memo_to_sign=None):
     """
-    ★ STEP 1: 새 주문 수신
-    - job.accept() 로 협상 승인
-    - 엔진 계산 후 결과를 job_results에 저장
-    - deliver는 하지 않음 (구매자 결제 후 on_evaluate에서 처리)
+    ★ STEP 1: SDK 콜백 스레드를 즉시 반환 (블로킹 방지)
+    memo_to_sign.sign()이 WebSocket 이벤트 루프를 블로킹하므로
+    백그라운드 스레드에서 처리
+    """
+    import threading
+    threading.Thread(
+        target=_handle_new_task,
+        args=(job, memo_to_sign),
+        daemon=True
+    ).start()
+
+
+def _handle_new_task(job, memo_to_sign=None):
+    """
+    실제 STEP1 처리 (백그라운드 daemon thread)
+    - 서비스 라우팅 → 즉시 accept → 엔진 계산 → 결과 저장
     """
     try:
         job_id = job.id
@@ -190,14 +202,12 @@ def on_new_task(job, memo_to_sign=None):
             job.reject(f"Unknown service: {service_name}")
             return
 
-        # ★ 협상 승인 (memo_to_sign 직접 사용)
+        # ★ 협상 승인 — sleep 제거하여 빠르게 accept
         import time
         print(f"[Seller] Accepting job {job_id}...")
         for attempt in range(3):
             try:
-                time.sleep(2)  # nonce 정리 대기
                 if memo_to_sign is not None:
-                    # memo_to_sign을 직접 sign (더 정확한 방법)
                     memo_to_sign.sign(True, f"Trinity {service_key} accepted")
                     print(f"[Seller] Job {job_id} accepted via memo_to_sign!")
                 else:
@@ -208,16 +218,16 @@ def on_new_task(job, memo_to_sign=None):
                 err_str = str(ae)
                 if 'signed' in err_str.lower() or 'already' in err_str.lower():
                     print(f"[Seller] Job {job_id} already signed, continuing...")
-                    break  # 이미 accept된 job → 그냥 계속 진행
+                    break
                 print(f"[Seller] accept() attempt {attempt+1} failed: {ae}")
                 if attempt == 2:
                     raise ae
-                time.sleep(5)
+                time.sleep(3)
 
         # ★ 엔진 계산
         print(f"[Seller] Processing {service_key}...")
         result = _call_handler(service_key, requirement)
-        print(f"[Seller] Engine result: {result.get('sentiment', result)}")
+        print(f"[Seller] Engine result ready for {service_key}")
 
         # ★ 결과 저장 (on_evaluate에서 사용)
         job_results[job_id] = {
@@ -247,6 +257,8 @@ def on_new_task(job, memo_to_sign=None):
     except Exception as e:
         print(f"[Seller] on_new_task error: {e}")
         _send_telegram(f"⚠️ [Seller] on_new_task 오류\n- Job ID: {getattr(job, 'id', '?')}\n- Error: {str(e)[:200]}")
+
+
 
 
 def on_evaluate(job):
