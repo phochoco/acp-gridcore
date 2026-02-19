@@ -106,8 +106,15 @@ async def lifespan(app: FastAPI):
 # FastAPI 앱 초기화 (lifespan 패턴)
 app = FastAPI(
     title="Trinity ACP Agent API",
-    description="AI-powered trading luck calculator based on Saju metaphysics",
-    version="1.0.1",
+    description=(
+        "Trinity Protocol — Saju-Quant Alt-Data Infrastructure for Autonomous Agents.\n\n"
+        "Engine: Eastern Metaphysics (Saju) → Quant Score. Converts time-energy into probability.\n\n"
+        "**[Backtest]** Binance BTC 2015-25, N=3,058 | +3.1pp Edge: "
+        "High(≥0.7) Win 53.1% | +0.19%/d | Low(<0.4) Win 50.0% | -0.01%/d\n\n"
+        "**Services:** dailyLuck $0.01 | deepLuck $0.50 | "
+        "sectorFeed $0.01 | dailySignal $0.01 | deepSignal $0.50 | agentMatch $2.00"
+    ),
+    version="1.1.0",
     docs_url=None,   # 커스텀 /docs 사용
     redoc_url="/redoc",
     lifespan=lifespan
@@ -383,13 +390,23 @@ async def custom_swagger_ui():
 # Routes
 @app.get("/", tags=["Root"])
 def root():
-    """API root endpoint"""
+    """Trinity Protocol — Saju-Quant Alt-Data for Crypto Agents"""
     return {
         "name": "Trinity ACP Agent API",
-        "version": "1.0.0",
+        "version": "1.1.0",
         "status": "running",
         "docs": "/docs",
-        "health": "/health"
+        "health": "/health",
+        "services": {
+            "dailyLuck":   {"price": "$0.01", "endpoint": "/api/v1/daily-luck"},
+            "deepLuck":    {"price": "$0.50", "endpoint": "/api/v1/deep-luck"},
+            "sectorFeed":  {"price": "$0.01", "endpoint": "/api/v1/sector-feed"},
+            "dailySignal": {"price": "$0.01", "endpoint": "/api/v1/daily-signal"},
+            "deepSignal":  {"price": "$0.50", "endpoint": "/api/v1/deep-signal"},
+            "agentMatch":  {"price": "$2.00", "endpoint": "/api/v1/agent-match"},
+        },
+        "backtest": "Binance BTC 2015-25, N=3058, +3.1pp Edge",
+        "buy_saju": "https://app.virtuals.io/virtuals/45004"
     }
 
 @app.api_route("/health", methods=["GET", "HEAD"], tags=["Monitoring"])
