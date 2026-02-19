@@ -352,7 +352,7 @@ def run_seller():
 
         private_key = os.getenv("WHITELISTED_WALLET_PRIVATE_KEY", "")
         agent_wallet = os.getenv("BUYER_AGENT_WALLET_ADDRESS", "")
-        entity_id = int(os.getenv("BUYER_ENTITY_ID", "2"))
+        entity_id = int(os.getenv("SELLER_ENTITY_ID", os.getenv("BUYER_ENTITY_ID", "2")))
 
         if not private_key or not agent_wallet:
             print("[Seller] Missing ACP credentials in .env")
