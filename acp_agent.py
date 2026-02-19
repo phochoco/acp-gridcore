@@ -220,20 +220,16 @@ class TrinityACPAgent:
     def verify_accuracy(self, force_refresh: bool = False) -> Dict:
         """
         백테스트 신뢰성 검증 데이터 제공 (캐싱 적용)
-        
+        실제 바이낸스 BTC/USDT 10년치 데이터 기반 (backtest_result.json)
+
         Args:
             force_refresh: 캐시 무시하고 강제 재계산
-        
+
         Returns:
-            {
-                "correlation_coefficient": 0.67,
-                "sample_size": 365,
-                "accuracy_rate": 0.72,
-                "top_signals": [...],
-                "disclaimer": "...",
-                "cached": true/false
-            }
+            실제 Binance 백테스트 결과 (N=3058일, 2015~2025)
         """
+        import json, os
+
         # 캐시 유효성 검사
         cache_valid = (
             self._backtest_cache is not None and
@@ -241,22 +237,64 @@ class TrinityACPAgent:
             not force_refresh and
             (datetime.now() - self._cache_timestamp).total_seconds() < Config.CACHE_TTL_SECONDS
         )
-        
+
         if cache_valid:
-            # 캐시된 데이터 반환
             result = self._backtest_cache.copy()
             result["cached"] = True
             result["cache_age_seconds"] = int((datetime.now() - self._cache_timestamp).total_seconds())
             return result
-        
-        # 새로 계산
-        result = self.backtest_engine.get_correlation_report()
-        result["cached"] = False
-        
+
+        # ★ 실제 바이낸스 백테스트 결과 파일 우선 읽기
+        backtest_json_path = os.path.join(os.path.dirname(__file__), "backtest_result.json")
+        if os.path.exists(backtest_json_path):
+            try:
+                with open(backtest_json_path, "r") as f:
+                    raw = json.load(f)
+                result = {
+                    "correlation_coefficient": raw.get("return_correlation", 0.0),
+                    "volatility_correlation": raw.get("volatility_correlation", 0.0),
+                    "sample_size": raw.get("sample_size", 0),
+                    "period": raw.get("period", ""),
+                    "accuracy_rate": round(raw.get("high_luck_win_rate_pct", 0) / 100, 4),
+                    "high_luck_win_rate_pct": raw.get("high_luck_win_rate_pct", 0),
+                    "high_luck_avg_return_pct": raw.get("high_luck_avg_return_pct", 0),
+                    "low_luck_win_rate_pct": raw.get("low_luck_win_rate_pct", 0),
+                    "low_luck_avg_return_pct": raw.get("low_luck_avg_return_pct", 0),
+                    "edge_pct": raw.get("edge_pct", 0),
+                    "win_rate_edge_pp": raw.get("win_rate_edge_pp", 0),
+                    "all_win_rate_pct": raw.get("all_win_rate_pct", 0),
+                    "top_signals": [
+                        {
+                            "signal": "HIGH_LUCK (score >= 0.7)",
+                            "days": raw.get("high_luck_days", 0),
+                            "avg_next_day_return": f"+{raw.get('high_luck_avg_return_pct', 0):.2f}%",
+                            "win_rate": f"{raw.get('high_luck_win_rate_pct', 0):.1f}%"
+                        },
+                        {
+                            "signal": "LOW_LUCK (score < 0.4)",
+                            "days": raw.get("low_luck_days", 0),
+                            "avg_next_day_return": f"{raw.get('low_luck_avg_return_pct', 0):.2f}%",
+                            "win_rate": f"{raw.get('low_luck_win_rate_pct', 0):.1f}%"
+                        }
+                    ],
+                    "data_source": raw.get("source", "Binance BTCUSDT 1d OHLCV"),
+                    "methodology": "BTC Genesis Block (2009-01-03 18:15 KST) Saju analysis vs next-day BTC return",
+                    "disclaimer": "Past performance does not guarantee future results. For informational purposes only.",
+                    "cached": False
+                }
+            except Exception as e:
+                # JSON 읽기 실패 시 기존 엔진으로 폴백
+                result = self.backtest_engine.get_correlation_report()
+                result["cached"] = False
+        else:
+            # backtest_result.json 없으면 기존 엔진 사용
+            result = self.backtest_engine.get_correlation_report()
+            result["cached"] = False
+
         # 캐시 저장
         self._backtest_cache = result.copy()
         self._cache_timestamp = datetime.now()
-        
+
         return result
     
     def run(self):
