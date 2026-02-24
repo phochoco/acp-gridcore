@@ -53,6 +53,11 @@ except Exception as e:
 # ★ job_id → 계산 결과 저장 (on_new_task → on_evaluate 간 공유)
 job_results = {}
 
+# ★ 온체인 TX 직렬화 Lock — 동일 Private Key 병렬 nonce 충돌 방지
+# 여러 job 스레드가 동시에 sign()/create_payable_requirement()를 호출하면
+# AA25 invalid account nonce 에러 발생 → Lock으로 순차 실행 보장
+TX_LOCK = threading.Lock()
+
 
 def _send_telegram(message: str):
     try:
@@ -159,13 +164,18 @@ def _handle_new_task(job, memo_to_sign=None):
         job_id = job.id
         service_name = str(job.name or '')
         requirement = _safe_parse_requirement(job.requirement)
+        # job.name이 없으면 requirement의 'service' 키에서 fallback
+        if not service_name and isinstance(requirement, dict):
+            service_name = str(requirement.get('service', ''))
 
-        # ★ 자기 자신이 보낸 job 스킵 (마케팅 봇이 구매자로 보낸 job)
+
+        # ★ 자기 자신이 보낸 job 스킵 방어 로직 (로컬 테스트를 위해 임시 주석 처리)
         client_addr = str(getattr(job, 'client_address', '') or '').lower()
         provider_addr = str(getattr(job, 'provider_address', '') or '').lower()
-        if AGENT_WALLET and client_addr == AGENT_WALLET:
-            print(f"[Seller] SKIP Job {job_id} — self-sent job (we are the buyer)")
-            return
+        # if AGENT_WALLET and client_addr == AGENT_WALLET:
+        #     print(f"[Seller] SKIP Job {job_id} — self-sent job (we are the buyer) - temporarily disabled for testing")
+        #     # return
+        
         # 우리가 provider도 아닌 경우 스킵 (우리 서비스가 아닌 job)
         if AGENT_WALLET and provider_addr and provider_addr != AGENT_WALLET:
             print(f"[Seller] SKIP Job {job_id} — not our service (provider={provider_addr[:10]}...)")
@@ -180,6 +190,52 @@ def _handle_new_task(job, memo_to_sign=None):
         print(f"\n[Seller] ★ STEP1: New job! ID={job_id}, Service={service_name}")
         print(f"[Seller] Requirement: {requirement}")
         print(f"[Seller] Phase: {job.phase}, memo next_phase: {memo_to_sign.next_phase if memo_to_sign else 'N/A'}")
+
+        # ★ NEGOTIATION 단계 memo만 처리 (EVALUATION memo 등은 스킵)
+        if memo_to_sign is not None:
+            try:
+                from virtuals_acp.models import ACPJobPhase
+                if int(memo_to_sign.next_phase) != int(ACPJobPhase.NEGOTIATION):
+                    print(f"[Seller] SKIP — memo.next_phase={memo_to_sign.next_phase} (not NEGOTIATION)")
+                    return
+            except Exception:
+                pass
+
+
+        # ─── 요청 유효성 검사 (reject 로직) ────────────────────────────
+        SUPPORTED_SERVICES = {
+            "sectorfeed", "sectorFeed",
+            "dailysignal", "dailySignal",
+            "deepsignal", "deepSignal",
+            "agentmatch", "agentMatch",
+            "deepluck", "deepLuck",
+            "dailyluck", "dailyLuck",
+        }
+        BLOCKED_KEYWORDS = ["hack", "scam", "exploit", "bypass", "dump", "rug", "phish", "fake", "fraud"]
+
+        # 1. 서비스명이 있지만 지원하지 않는 경우
+        if service_name and service_name.lower() not in {s.lower() for s in SUPPORTED_SERVICES}:
+            print(f"[Seller] ❌ REJECT Job {job_id} — Unsupported service: '{service_name}'")
+            if memo_to_sign is not None:
+                memo_to_sign.sign(False, f"Service '{service_name}' is not supported. Available: sectorFeed, dailySignal, deepSignal, agentMatch, dailyLuck, deepLuck.")
+            return
+
+        # 2. 요청 내용에 악의적 키워드 포함
+        req_text = json.dumps(requirement).lower() if isinstance(requirement, dict) else str(requirement).lower()
+        blocked = [kw for kw in BLOCKED_KEYWORDS if kw in req_text]
+        if blocked:
+            print(f"[Seller] ❌ REJECT Job {job_id} — Blocked keywords detected: {blocked}")
+            if memo_to_sign is not None:
+                memo_to_sign.sign(False, f"Request contains inappropriate content. This agent provides legitimate market analysis only.")
+            return
+
+        # 3. 요청 데이터가 지나치게 큰 경우 (1KB 초과)
+        if len(req_text) > 1024:
+            print(f"[Seller] ❌ REJECT Job {job_id} — Request too large ({len(req_text)} chars)")
+            if memo_to_sign is not None:
+                memo_to_sign.sign(False, "Request payload exceeds maximum allowed size (1KB).")
+            return
+        # ─────────────────────────────────────────────────────────────────
 
         # 서비스 라우팅
         service_lower = service_name.lower()
@@ -206,25 +262,46 @@ def _handle_new_task(job, memo_to_sign=None):
             job.reject(f"Unknown service: {service_name}")
             return
 
-        # ★ 협상 승인 — 타임아웃 5초 (블록체인 tx는 이미 on-chain)
+        # ★ 협상 승인 + 결제요청 — TX_LOCK으로 직렬화 (AA25 nonce 충돌 방지)
         import time, threading as _th
-        print(f"[Seller] Accepting job {job_id}...")
+        print(f"[Seller] Accepting job {job_id}... (waiting for TX_LOCK)")
 
         def _do_sign():
-            if memo_to_sign is not None:
-                memo_to_sign.sign(True, f"Trinity {service_key} accepted")
-            else:
-                job.accept()
+            with TX_LOCK:  # ← 핵심: 한 번에 하나의 TX만 제출
+                print(f"[Seller] TX_LOCK acquired for job {job_id}")
+                try:
+                    if memo_to_sign is not None:
+                        memo_to_sign.sign(True, f"Trinity {service_key} accepted")
+                    else:
+                        job.accept()
+                    print(f"[Seller] Job {job_id} accepted OK")
+                except Exception as _se:
+                    print(f"[Seller] ⚠️ sign() failed: {_se}")
+                    return
+
+                # ★ 결제 요청 memo 생성 (TRANSACTION → buyer 결제 트리거)
+                try:
+                    from virtuals_acp.models import MemoType
+                    from virtuals_acp.fare import Fare, FareAmount
+                    _cfg = job.acp_contract_client.config
+                    _fare = Fare(_cfg.base_fare.contract_address, _cfg.base_fare.decimals)
+                    _amount = FareAmount(revenue_val, _fare)
+                    job.create_payable_requirement(
+                        content=f"Payment for Trinity {service_key} (${revenue_val} USDC)",
+                        type=MemoType.PAYABLE_REQUEST,
+                        amount=_amount,
+                        recipient=job.provider_address,
+                    )
+                    print(f"[Seller] ✅ Payment request sent (Job {job_id}, ${revenue_val})")
+                except Exception as _pe:
+                    print(f"[Seller] ⚠️ Payment request failed: {_pe}")
 
         sign_thread = _th.Thread(target=_do_sign, daemon=True)
         sign_thread.start()
-        sign_thread.join(timeout=5)  # 최대 5초 대기
+        sign_thread.join(timeout=30)  # Lock 대기 포함 최대 30초
 
         if sign_thread.is_alive():
-            print(f"[Seller] Job {job_id} sign() timeout — tx already on-chain, continuing...")
-        else:
-            print(f"[Seller] Job {job_id} accepted OK")
-
+            print(f"[Seller] Job {job_id} TX thread still running (lock contention or slow tx)")
 
         # ★ 엔진 계산
         print(f"[Seller] Processing {service_key}...")
@@ -373,6 +450,31 @@ def run_seller():
             on_new_task=on_new_task,
             on_evaluate=on_evaluate,
         )
+
+        # ★ EVALUATION단계 job 폴링 스레드 (job_results 기반, onEvaluate 소켓 대신)
+        def _polling_evaluate():
+            import time as _t
+            _processed = set()
+            while True:
+                _t.sleep(15)
+                for jid in list(job_results.keys()):
+                    if jid in _processed:
+                        continue
+                    try:
+                        job_obj = acp_client.get_job_by_onchain_id(jid)
+                        _phase = int(job_obj.phase)
+                        if _phase == 3:   # EVALUATION
+                            print(f"\n[Seller/Poll] 🔍 EVALUATION job 발견: {jid}")
+                            on_evaluate(job_obj)
+                            _processed.add(jid)
+                        elif _phase in (4, 5):  # COMPLETED or REJECTED
+                            _processed.add(jid)  # 더 이상 폴링 불필요
+                    except Exception as _e:
+                        print(f"[Seller/Poll] ❗ Job {jid}: {_e}")
+
+        threading.Thread(target=_polling_evaluate, daemon=True).start()
+        print("[Seller] ✅ EVALUATION 폴링 스레드 시작 (주기: 15초)")
+
 
         # 텔레그램 봇 스레드 시작
         if BOT_AVAILABLE:
