@@ -26,10 +26,10 @@ BUYER_ENTITY_ID    = int(os.getenv("BUYER2_ENTITY_ID", "0"))
 SELLER_WALLET      = os.getenv("BUYER_AGENT_WALLET_ADDRESS",
                                 "0xaC44D4C2De4d3b49844ac4B3500Ab49ad57b2dEB")
 
-DELAY_BETWEEN_JOBS = 30
+DELAY_BETWEEN_JOBS = 30    # job 간 대기
 POLL_INTERVAL      = 5
-ACCEPT_TIMEOUT     = 120   # seller accept 대기 (초)
-DELIVER_TIMEOUT    = 120   # deliver/complete 대기 (초)
+ACCEPT_TIMEOUT     = 180   # seller accept 대기 (초)
+DELIVER_TIMEOUT    = 600   # deliver/complete 대기 (초) — 셀러 폴링 15초 주기 감안
 
 # ── 10회 자기결제 시나리오 (Trinity Oracle → Trinity Agent) ────────
 # 총 비용: $0.01×9 + $0.50×1 = $0.59
