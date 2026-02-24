@@ -157,24 +157,9 @@ def run_e2e_test():
                 print(f"[Pay] ❌ 결제 실패: {e}")
                 results.append({"idx": idx, "status": f"PAY_FAIL:{e}"}); continue
 
-            # ③-b EVALUATION memo 서명 (→ phase=3, seller onEvaluate 발화)
-            try:
-                import time as _t; _t.sleep(3)  # on-chain 반영 대기
-                fresh_job = buyer_client.get_job_by_onchain_id(job_id)
-                eval_memo = next(
-                    (m for m in fresh_job.memos if int(m.next_phase) == 3),
-                    None
-                )
-                if eval_memo:
-                    print(f"[Pay] ✍️ EVALUATION memo({eval_memo.id}) 서명 중...")
-                    buyer_client.contract_client.handle_operation(
-                        [buyer_client.contract_client.sign_memo(eval_memo.id, True, "Payment confirmed")]
-                    )
-                    print(f"[Pay] ✅ EVALUATION memo 서명 완료 → phase=3 전환")
-                else:
-                    print(f"[Pay] ⚠️ EVALUATION memo 없음")
-            except Exception as e:
-                print(f"[Pay] ⚠️ EVALUATION memo 서명 실패: {e}")
+            # ③-b SKIP — seller의 on_evaluate()가 EVALUATION memo + deliver + evaluate 처리
+            # buyer가 직접 서명하면 Already signed / AA25 nonce 충돌 발생
+            print(f"[Pay] ✅ 결제 완료 → seller가 deliver/evaluate 처리 대기 중...")
 
             # ④ COMPLETED 대기
 
