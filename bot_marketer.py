@@ -1,7 +1,8 @@
 """
 Trinity ACP Agent — Bot-to-Bot Marketing Module
 Type A: 30분마다 무료 핑 (HTTP 요청, 로그 존재감)
-Type B: 6시간마다 실제 ACP 온체인 결제 (virtuals-acp SDK)
+Type B: [표제된] 외부 에이전트 유료결제 \u2014 서버 다운으로 낙비 방지
+           자기결제는 acp_buyer.py 로 별도 운영
 """
 import os
 import json
@@ -224,12 +225,12 @@ def _call_target_agent_paid(agent: Dict) -> Optional[Dict]:
 
 
 def _should_run_type_b() -> bool:
-    """Type B 실행 여부 판단 (6시간마다)"""
-    global _last_type_b_time
-    now = datetime.now()
-    if _last_type_b_time is None:
-        return True
-    return (now - _last_type_b_time).total_seconds() >= TYPE_B_INTERVAL_HOURS * 3600
+    """
+    [DISABLED] Type B 외부 지불 비활성화
+    이유: 대부분의 외부 에이전트 서버가 다운/불답 상태 → USDC 낙비
+    자기결제(Oracle → Agent)는 acp_buyer.py로 별도 접속 실행
+    """
+    return False  # 외부 쭔 에이전트 결제 증첸 비활성화
 
 
 def _log_cross_validation(trinity_data: Dict, agent: Dict, agent_response: Optional[Dict], tx_type: str = "TYPE_A"):
@@ -320,18 +321,11 @@ async def run_bot_marketing():
     log_entry = _log_cross_validation(trinity_data, agent, agent_response, "TYPE_A")
     cross_signal = log_entry["cross_validation"]
 
-    # ===== TYPE B: 유료 결제 (6시간마다) =====
+    # ===== TYPE B: 비활성화 (외부 낙비 방지) =====
     type_b_result = None
     type_b_tag = ""
-    if _should_run_type_b():
-        print(f"\n💳 [Type B] 6-hour interval reached — initiating paid job...")
-        paid_agent = random.choice(TARGET_AGENTS)
-        type_b_result = _call_target_agent_paid(paid_agent)
-        if type_b_result:
-            _last_type_b_time = datetime.now()
-            _log_cross_validation(trinity_data, paid_agent, type_b_result, "TYPE_B")
-            type_b_tag = f"\n💳 <b>Type B Paid Job:</b> {paid_agent['name']} | Job ID: {type_b_result.get('job_id', 'N/A')}"
-            print(f"✅ [Type B] Complete! Next in {TYPE_B_INTERVAL_HOURS}h")
+    # _should_run_type_b()는 항상 False를 반환 — 외부 쭔 에이전트 결제 스킵
+    # 자기결제는 acp_buyer.py 를 직접 실행하세요
 
     # 5. 텔레그램 알림
     signal_tag = {
