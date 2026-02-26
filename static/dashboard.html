@@ -1386,7 +1386,7 @@
         (d.buyers || []).forEach(b => {
           const labelClass = b.is_self ? 'seller' : 'buyer';
           body.innerHTML += `<tr>
-            <td style="font-size:6px">${b.short}</td>
+            <td style="font-size:6px">${b.short} <span style="cursor:pointer;font-size:8px" onclick="navigator.clipboard.writeText('${b.address}').then(()=>this.textContent='✅').catch(()=>{})">📋</span></td>
             <td><span class="badge ${labelClass}">${b.label}</span></td>
             <td style="color:var(--accent)">${b.count}x</td>
             <td style="color:var(--gold)">$${b.revenue.toFixed(2)}</td>
