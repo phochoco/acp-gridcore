@@ -654,6 +654,7 @@
     <div class="tab" data-tab="schedule">⏰ Scheduler</div>
     <div class="tab" data-tab="agents">🤖 Agents</div>
     <div class="tab" data-tab="oracle">🏪 Oracle</div>
+    <div class="tab" data-tab="marketing">🎯 Marketing</div>
   </div>
 
   <!-- Main Layout -->
@@ -921,6 +922,53 @@
 
         <div class="pixel-divider"></div>
         <div style="font-size:8px;color:var(--dim)">E2E 실행 결과는 우측 로그 패널에서 확인하세요.</div>
+      </div>
+
+      <!-- Tab: Marketing -->
+      <div class="tab-content" id="tab-marketing">
+        <div style="font-size:10px;margin-bottom:16px">🎯 선빵 마케팅 (네트워킹 구매)</div>
+        <div style="font-size:7px;color:var(--dim);margin-bottom:16px">
+          타겟 에이전트에게 무료 핑(Type A) 또는 율체인 결제(Type B)를 보내 Trinity 존재감을 높입니다.
+        </div>
+
+        <!-- Run Button -->
+        <div class="btn-row" style="margin-bottom:16px">
+          <button class="btn" style="border-color:var(--gold);color:var(--gold)" onclick="runMarketing()">🚀 Run
+            Marketing Cycle</button>
+        </div>
+
+        <!-- Target Agents -->
+        <div style="font-size:8px;margin-bottom:8px">🎯 TARGET AGENTS</div>
+        <div id="targetAgentList"></div>
+
+        <div class="pixel-divider"></div>
+        <div style="font-size:8px;margin-bottom:8px">➕ 타겟 추가</div>
+        <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+          <input id="tName" placeholder="Name"
+            style="flex:1;min-width:80px;padding:6px;background:#1a1a2e;border:1px solid var(--border);color:var(--text);font-family:var(--pixel-font);font-size:7px;border-radius:4px">
+          <input id="tProjectId" placeholder="Project ID"
+            style="width:70px;padding:6px;background:#1a1a2e;border:1px solid var(--border);color:var(--text);font-family:var(--pixel-font);font-size:7px;border-radius:4px">
+          <input id="tService" placeholder="Service"
+            style="width:80px;padding:6px;background:#1a1a2e;border:1px solid var(--border);color:var(--text);font-family:var(--pixel-font);font-size:7px;border-radius:4px">
+          <button class="btn success" style="font-size:6px" onclick="addTarget()">+ Add</button>
+        </div>
+
+        <!-- Marketing Logs -->
+        <div class="pixel-divider"></div>
+        <div style="font-size:8px;margin-bottom:8px">📝 MARKETING LOGS</div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Type</th>
+              <th>Agent</th>
+              <th>Score</th>
+              <th>Signal</th>
+            </tr>
+          </thead>
+          <tbody id="mktLogBody"></tbody>
+        </table>
+        <div class="btn-row"><button class="btn" onclick="loadMarketingLogs()">🔄 Refresh</button></div>
       </div>
     </div>
 
@@ -1233,6 +1281,63 @@
       loadSchedules();
     }
 
+    // === Marketing ===
+    async function loadTargets() {
+      try {
+        const r = await fetch(API + '/gui/marketing/targets');
+        const d = await r.json();
+        const list = document.getElementById('targetAgentList');
+        list.innerHTML = '';
+        (d.agents || []).forEach(a => {
+          list.innerHTML += `<div class="schedule-item"><div><div class="info">${a.name}</div><div class="time">ID:${a.project_id} | ${a.service}</div></div><button class="btn danger" style="font-size:5px;padding:2px 6px" onclick="removeTarget('${a.name}')">\u274c</button></div>`;
+        });
+        if (!(d.agents || []).length) list.innerHTML = '<div style="font-size:7px;color:var(--dim)">No targets</div>';
+      } catch (e) { }
+    }
+
+    async function addTarget() {
+      const body = {
+        name: document.getElementById('tName').value,
+        project_id: document.getElementById('tProjectId').value,
+        service: document.getElementById('tService').value,
+        description: 'Added via GUI'
+      };
+      if (!body.name || !body.project_id) { alert('Name and Project ID required'); return; }
+      await fetch(API + '/gui/marketing/targets/agent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      ['tName', 'tProjectId', 'tService'].forEach(id => document.getElementById(id).value = '');
+      loadTargets();
+    }
+
+    async function removeTarget(name) {
+      await fetch(API + '/gui/marketing/targets/agent/' + encodeURIComponent(name), { method: 'DELETE' });
+      loadTargets();
+    }
+
+    async function runMarketing() {
+      if (!confirm('\ud83d\ude80 \ub9c8\ucf00\ud305 \uc0ac\uc774\ud074\uc744 \uc2e4\ud589\ud558\uc2dc\uaca0\uc2b5\ub2c8\uae4c?')) return;
+      try {
+        const r = await fetch(API + '/gui/marketing/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        const d = await r.json();
+        addLogLine(`[GUI] \ud83c\udfaf Marketing cycle started (PID: ${d.pid})`, 'eval');
+        setTimeout(loadMarketingLogs, 10000);
+      } catch (e) { alert('Error: ' + e); }
+    }
+
+    async function loadMarketingLogs() {
+      try {
+        const r = await fetch(API + '/gui/marketing/logs');
+        const d = await r.json();
+        const body = document.getElementById('mktLogBody');
+        body.innerHTML = '';
+        (d.logs || []).slice(-15).reverse().forEach(l => {
+          const time = l.timestamp ? l.timestamp.slice(11, 19) : '-';
+          const signal = l.cross_validation || '-';
+          const signalColor = signal.includes('STRONG') ? 'var(--green)' : signal.includes('CAUTION') ? 'var(--neon)' : 'var(--dim)';
+          body.innerHTML += `<tr><td>${time}</td><td><span class="badge ${l.tx_type === 'TYPE_B' ? 'seller' : 'buyer'}">${l.tx_type}</span></td><td>${l.target_agent}</td><td>${l.trinity_score || '-'}</td><td style="color:${signalColor}">${signal}</td></tr>`;
+        });
+      } catch (e) { }
+    }
+
     // === Init ===
     refreshStatus();
     loadJobs();
@@ -1240,6 +1345,8 @@
     loadRevenue();
     loadSpam();
     loadSchedules();
+    loadTargets();
+    loadMarketingLogs();
     connectLogStream();
     setInterval(refreshStatus, 30000);
     setInterval(loadJobs, 60000);

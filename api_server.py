@@ -1459,6 +1459,76 @@ def gui_delete_schedule(schedule_id: str):
     return {"success": True}
 
 
+# --- Marketing GUI ---
+TARGETS_FILE = os.path.join(os.path.dirname(__file__), "targets.json")
+MARKETING_LOG = os.path.join(os.path.dirname(__file__), "data", "bot_marketing_log.json")
+
+def _load_targets():
+    if os.path.exists(TARGETS_FILE):
+        with open(TARGETS_FILE, "r") as f:
+            return _json.load(f)
+    return {"agents": [], "tokens": []}
+
+def _save_targets(data):
+    with open(TARGETS_FILE, "w") as f:
+        _json.dump(data, f, indent=2)
+
+@app.get("/gui/marketing/targets", tags=["🎯 Marketing"])
+def gui_get_targets():
+    """타겟 에이전트 + 토큰 목록"""
+    return _load_targets()
+
+@app.post("/gui/marketing/targets/agent", tags=["🎯 Marketing"])
+def gui_add_target_agent(body: dict):
+    """타겟 에이전트 추가"""
+    required = ["name", "project_id", "service"]
+    for k in required:
+        if k not in body:
+            raise HTTPException(status_code=400, detail=f"Missing: {k}")
+    data = _load_targets()
+    data["agents"].append(body)
+    _save_targets(data)
+    return {"success": True, "agents": data["agents"]}
+
+@app.delete("/gui/marketing/targets/agent/{name}", tags=["🎯 Marketing"])
+def gui_remove_target_agent(name: str):
+    """타겟 에이전트 삭제"""
+    data = _load_targets()
+    data["agents"] = [a for a in data["agents"] if a.get("name") != name]
+    _save_targets(data)
+    return {"success": True, "agents": data["agents"]}
+
+@app.get("/gui/marketing/logs", tags=["🎯 Marketing"])
+def gui_marketing_logs():
+    """마케팅 로그 (최근 50개)"""
+    if os.path.exists(MARKETING_LOG):
+        try:
+            with open(MARKETING_LOG, "r") as f:
+                logs = _json.load(f)
+            return {"logs": logs[-50:]}
+        except:
+            pass
+    return {"logs": []}
+
+@app.post("/gui/marketing/run", tags=["🎯 Marketing"])
+async def gui_run_marketing(body: dict = {}):
+    """마케팅 사이클 수동 실행"""
+    mode = body.get("mode", "type_a")  # type_a or type_b
+    target_name = body.get("target", "")  # 특정 에이전트 지정 (빈값이면 랜덤)
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "python3", "-c",
+            f"import asyncio; from bot_marketer import run_bot_marketing; asyncio.run(run_bot_marketing())",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+            cwd=os.path.dirname(__file__)
+        )
+        logger.info(f"🎯 Marketing cycle started manually (PID={proc.pid})")
+        return {"success": True, "pid": proc.pid, "mode": mode}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # --- Dashboard HTML 서빙 ---
 @app.get("/dashboard", include_in_schema=False)
 async def serve_dashboard():
