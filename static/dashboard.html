@@ -804,6 +804,40 @@
           <button class="btn" onclick="loadRevenue()">🔄 Refresh</button>
           <button class="btn" onclick="loadRevenue(30)">📅 30 Days</button>
         </div>
+
+        <!-- Buyer Tracking -->
+        <div class="pixel-divider"></div>
+        <div style="font-size:8px;margin-bottom:8px">👥 BUYER TRACKING — 누가 Trinity를 샀는가?</div>
+        <div class="rev-cards" style="grid-template-columns:repeat(3,1fr);margin-bottom:12px">
+          <div class="rev-card purple">
+            <div class="rv-icon">👥</div>
+            <div class="rv-value" id="buyerTotal">0</div>
+            <div class="rv-label">UNIQUE BUYERS</div>
+          </div>
+          <div class="rev-card green">
+            <div class="rv-icon">🌍</div>
+            <div class="rv-value" id="buyerExternal">0</div>
+            <div class="rv-label">EXTERNAL</div>
+          </div>
+          <div class="rev-card gold">
+            <div class="rv-icon">🏪</div>
+            <div class="rv-value" id="buyerSelf">0</div>
+            <div class="rv-label">SELF (ORACLE)</div>
+          </div>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Buyer</th>
+              <th>Type</th>
+              <th>Count</th>
+              <th>Revenue</th>
+              <th>Services</th>
+              <th>Last Buy</th>
+            </tr>
+          </thead>
+          <tbody id="buyerBody"></tbody>
+        </table>
       </div>
 
       <!-- Tab 2: Scheduler -->
@@ -1338,11 +1372,37 @@
       } catch (e) { }
     }
 
+    // === Buyer Tracking ===
+    async function loadBuyers() {
+      try {
+        const r = await fetch(API + '/gui/buyers');
+        const d = await r.json();
+        document.getElementById('buyerTotal').textContent = d.total_unique_buyers;
+        document.getElementById('buyerExternal').textContent = d.external_buyers;
+        document.getElementById('buyerSelf').textContent = d.self_purchases;
+
+        const body = document.getElementById('buyerBody');
+        body.innerHTML = '';
+        (d.buyers || []).forEach(b => {
+          const labelClass = b.is_self ? 'seller' : 'buyer';
+          body.innerHTML += `<tr>
+            <td style="font-size:6px">${b.short}</td>
+            <td><span class="badge ${labelClass}">${b.label}</span></td>
+            <td style="color:var(--accent)">${b.count}x</td>
+            <td style="color:var(--gold)">$${b.revenue.toFixed(2)}</td>
+            <td style="font-size:6px">${b.services.join(', ')}</td>
+            <td style="font-size:6px">${b.last_buy ? b.last_buy.slice(0, 10) : '-'}</td>
+          </tr>`;
+        });
+      } catch (e) { }
+    }
+
     // === Init ===
     refreshStatus();
     loadJobs();
     loadAgents();
     loadRevenue();
+    loadBuyers();
     loadSpam();
     loadSchedules();
     loadTargets();

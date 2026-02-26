@@ -1529,6 +1529,68 @@ async def gui_run_marketing(body: dict = {}):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# --- Buyer Tracking ---
+SALES_LOG = os.path.join(os.path.dirname(__file__), "sales_log.json")
+
+@app.get("/gui/buyers", tags=["📊 Buyer Tracking"])
+def gui_buyer_tracking():
+    """바이어 추적: 누가 Trinity를 구매했는지 + 마케팅 타겟 대조"""
+    from collections import defaultdict
+
+    sales = []
+    if os.path.exists(SALES_LOG):
+        try:
+            with open(SALES_LOG, "r") as f:
+                data = _json.load(f)
+                sales = data.get("sales", [])
+        except:
+            pass
+
+    # 바이어별 집계
+    buyer_stats = defaultdict(lambda: {"count": 0, "revenue": 0.0, "services": set(), "last_buy": ""})
+    for s in sales:
+        addr = s.get("buyer", "").lower()
+        if not addr:
+            continue
+        buyer_stats[addr]["count"] += 1
+        buyer_stats[addr]["revenue"] += s.get("revenue", 0)
+        buyer_stats[addr]["services"].add(s.get("service", "?"))
+        buyer_stats[addr]["last_buy"] = s.get("timestamp", "")
+
+    # 마케팅 타겟 주소 (현재 targets.json에는 project_id만 있지만, 향후 wallet 추가 가능)
+    targets = _load_targets()
+    target_names = {a.get("name", "").lower() for a in targets.get("agents", [])}
+
+    # 자기 지갑 주소 (자기결제 Oracle 필터링용)
+    self_wallet = os.getenv("BUYER_AGENT_WALLET_ADDRESS", "").lower()
+
+    # 결과 정리
+    buyers = []
+    for addr, stats in sorted(buyer_stats.items(), key=lambda x: x[1]["count"], reverse=True):
+        is_self = addr == self_wallet
+        buyers.append({
+            "address": addr,
+            "short": addr[:8] + "..." + addr[-4:] if len(addr) > 12 else addr,
+            "count": stats["count"],
+            "revenue": round(stats["revenue"], 4),
+            "services": list(stats["services"]),
+            "last_buy": stats["last_buy"],
+            "is_self": is_self,
+            "label": "🏪 Oracle (Self)" if is_self else "🌍 External",
+        })
+
+    total_external = sum(1 for b in buyers if not b["is_self"])
+    total_self = sum(1 for b in buyers if b["is_self"])
+
+    return {
+        "buyers": buyers,
+        "total_unique_buyers": len(buyers),
+        "external_buyers": total_external,
+        "self_purchases": total_self,
+        "total_sales": len(sales),
+    }
+
+
 # --- Dashboard HTML 서빙 ---
 @app.get("/dashboard", include_in_schema=False)
 async def serve_dashboard():
