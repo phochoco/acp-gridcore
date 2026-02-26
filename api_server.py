@@ -1561,13 +1561,17 @@ def gui_buyer_tracking():
     targets = _load_targets()
     target_names = {a.get("name", "").lower() for a in targets.get("agents", [])}
 
-    # 자기 지갑 주소 (자기결제 Oracle 필터링용)
-    self_wallet = os.getenv("BUYER_AGENT_WALLET_ADDRESS", "").lower()
+    # 자기 지갑 주소들 (자기결제 Oracle 필터링용)
+    self_wallets = {
+        os.getenv("BUYER_AGENT_WALLET_ADDRESS", "").lower(),
+        os.getenv("BUYER2_AGENT_WALLET_ADDRESS", "").lower(),
+    }
+    self_wallets.discard("")
 
     # 결과 정리
     buyers = []
     for addr, stats in sorted(buyer_stats.items(), key=lambda x: x[1]["count"], reverse=True):
-        is_self = addr == self_wallet
+        is_self = addr in self_wallets
         buyers.append({
             "address": addr,
             "short": addr[:8] + "..." + addr[-4:] if len(addr) > 12 else addr,
