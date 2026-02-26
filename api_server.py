@@ -393,17 +393,19 @@ def root():
     """Trinity Protocol — Saju-Quant Alt-Data for Crypto Agents"""
     return {
         "name": "Trinity ACP Agent API",
-        "version": "1.1.0",
+        "version": "1.2.0",
         "status": "running",
         "docs": "/docs",
         "health": "/health",
         "services": {
-            "dailyLuck":   {"price": "$0.01", "endpoint": "/api/v1/daily-luck"},
-            "deepLuck":    {"price": "$0.50", "endpoint": "/api/v1/deep-luck"},
-            "sectorFeed":  {"price": "$0.01", "endpoint": "/api/v1/sector-feed"},
-            "dailySignal": {"price": "$0.01", "endpoint": "/api/v1/daily-signal"},
-            "deepSignal":  {"price": "$0.50", "endpoint": "/api/v1/deep-signal"},
-            "agentMatch":  {"price": "$2.00", "endpoint": "/api/v1/agent-match"},
+            "dailyLuck":         {"price": "$0.01", "endpoint": "/api/v1/daily-luck"},
+            "deepLuck":          {"price": "$0.50", "endpoint": "/api/v1/deep-luck"},
+            "sectorFeed":        {"price": "$0.01", "endpoint": "/api/v1/sector-feed"},
+            "dailySignal":       {"price": "$0.01", "endpoint": "/api/v1/daily-signal"},
+            "deepSignal":        {"price": "$0.50", "endpoint": "/api/v1/deep-signal"},
+            "agentMatch":        {"price": "$2.00", "endpoint": "/api/v1/agent-match"},
+            "trinityHistorical": {"price": "$0.01", "endpoint": "/api/v1/historical/trinity",
+                                  "note": "Backtest alt-data. Lookahead Bias 0%. components=[saju,astro,qimen]"},
         },
         "backtest": "Binance BTC 2015-25, N=3058, +3.1pp Edge",
         "buy_saju": "https://app.virtuals.io/virtuals/45004"
@@ -950,14 +952,293 @@ async def general_exception_handler(request: Request, exc: Exception):
         }
     )
 
+# =====================================================================
+# 하나, 테로, 셋 — trinityHistorical (Backtest Alt-Data API)
+# =====================================================================
+
+@app.get("/api/v1/historical/trinity", tags=["Trinity Alt-Data"])
+@limiter.limit("20/minute")
+def get_trinity_historical(
+    request: Request,
+    symbol: Optional[str] = None,
+    start_time: Optional[int] = None,
+    end_time: Optional[int] = None,
+    interval: str = "1h",
+    limit: int = 1000
+):
+    """
+    [trinityHistorical $0.01] Trinity Score Historical Backtest Alt-Data.
+
+    Returns pre-computed Trinity Score vectors for a given time range.
+    Lookahead Bias = 0% (only Unix Timestamp is used as input variable).
+    Suitable for backtesting, ML feature engineering, and quant model validation.
+
+    - **symbol**: Target symbol (e.g., BTCUSDT). Not used in computation, passed-through for labeling.
+    - **start_time**: Unix Timestamp (UTC) start of range.
+    - **end_time**: Unix Timestamp (UTC) end of range.
+    - **interval**: Candle interval (1h, 4h, 1d). Default: 1h.
+    - **limit**: Number of data points to return. Max: 5000. Default: 1000.
+
+    Response: `{"t": unix_ts, "score": 0.0-1.0, "components": [saju, astro, qimen]}`
+    """
+    import datetime as _dt
+    import calendar as _cal
+    from astro_engine import AstroEngine
+    from qimen_engine import QimenEngine
+    import math as _math
+
+    try:
+        # --- 파라미터 정리 ---
+        limit = max(1, min(limit, 5000))
+        step_map = {"1h": 3600, "4h": 14400, "1d": 86400}
+        step_sec = step_map.get(interval, 3600)
+
+        now_ts = int(_cal.timegm(_dt.datetime.utcnow().timetuple()))
+        _end_ts = end_time if end_time else now_ts
+        _start_ts = start_time if start_time else (_end_ts - step_sec * limit)
+
+        # --- 앙상블 엔진 인스턴스 (per-request) ---
+        astro_engine = AstroEngine()
+        qimen_engine = QimenEngine()
+
+        data = []
+        current_ts = _start_ts
+        count = 0
+
+        while current_ts <= _end_ts and count < limit:
+            # 사주 스코어: 해당 timestamp의 날짜로 엔진 호출
+            try:
+                target_date_str = _dt.datetime.utcfromtimestamp(current_ts).strftime("%Y-%m-%d")
+                saju_result = agent.trinity_engine.calculate_daily_luck(
+                    birth_date=target_date_str,
+                    birth_time="12:00",
+                    target_date=target_date_str
+                )
+                # trinity_engine_v2가 이미 앙상블 계산을 반환
+                trinity_score = saju_result.get("trinity_score", saju_result.get("trading_luck_score", 0.5))
+                components = saju_result.get("components", [])
+            except Exception:
+                # 오류 시 Astro/Qimen만으로 폴백
+                astro_s = astro_engine.calculate(current_ts)
+                qimen_s = qimen_engine.calculate(current_ts)
+                trinity_score = round((0.5 * 0.4) + (astro_s * 0.3) + (qimen_s * 0.3), 4)
+                components = [0.5, astro_s, qimen_s]
+
+            data.append({
+                "t": current_ts,
+                "score": round(float(trinity_score), 4),
+                "components": [round(float(c), 4) for c in components]
+            })
+
+            current_ts += step_sec
+            count += 1
+
+        response_body = {
+            "code": 200,
+            "request": {
+                "symbol": symbol or "GENERAL",
+                "interval": interval,
+                "start_time": _start_ts,
+                "end_time": _end_ts,
+                "count": len(data)
+            },
+            "data": data
+        }
+
+        # Cloudflare Edge Cache: 과거 데이터(Immutable Historical)이므로 1주일 에지 캐싱
+        headers = {
+            "Cache-Control": "public, max-age=3600, s-maxage=604800",
+            "X-Trinity-Engine": "v3-ensemble",
+            "X-Lookahead-Bias": "zero"
+        }
+
+        return JSONResponse(content=response_body, headers=headers)
+
+    except Exception as e:
+        logger.error(f"trinityHistorical error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# =====================================================================
+# 🎮 GUI Dashboard API
+# =====================================================================
+import subprocess, asyncio, json as _json
+from fastapi.responses import StreamingResponse
+
+# 에이전트 설정 파일 경로
+AGENTS_FILE = os.path.join(os.path.dirname(__file__), "agents.json")
+
+def _load_agents():
+    if os.path.exists(AGENTS_FILE):
+        with open(AGENTS_FILE, "r") as f:
+            return _json.load(f)
+    return []
+
+def _save_agents(agents):
+    with open(AGENTS_FILE, "w") as f:
+        _json.dump(agents, f, indent=2)
+
+@app.get("/gui/status", tags=["🎮 GUI Dashboard"])
+def gui_status():
+    """셀러 서비스 상태 + 메트릭"""
+    seller_active = False
+    try:
+        r = subprocess.run(
+            ["systemctl", "is-active", "trinity-seller"],
+            capture_output=True, text=True, timeout=5
+        )
+        seller_active = r.stdout.strip() == "active"
+    except Exception:
+        pass
+
+    uptime_seconds = time.time() - start_time
+    return {
+        "seller_active": seller_active,
+        "api_uptime_seconds": round(uptime_seconds, 2),
+        "total_requests": request_count,
+        "agents_count": len(_load_agents()),
+        "scheduler_running": SCHEDULER_AVAILABLE and scheduler and scheduler.running,
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+@app.post("/gui/seller/{action}", tags=["🎮 GUI Dashboard"])
+def gui_seller_control(action: str):
+    """셀러 서비스 제어: start / stop / restart"""
+    if action not in ("start", "stop", "restart"):
+        raise HTTPException(status_code=400, detail="action must be start/stop/restart")
+    try:
+        r = subprocess.run(
+            ["sudo", "systemctl", action, "trinity-seller"],
+            capture_output=True, text=True, timeout=15
+        )
+        return {"action": action, "success": r.returncode == 0, "output": r.stderr.strip() or r.stdout.strip()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/gui/run-e2e", tags=["🎮 GUI Dashboard"])
+async def gui_run_e2e():
+    """acp_e2e_unified.py 비동기 실행"""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "python3", os.path.join(os.path.dirname(__file__), "acp_e2e_unified.py"),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+            cwd=os.path.dirname(__file__)
+        )
+        return {"pid": proc.pid, "status": "started"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/gui/logs/stream", tags=["🎮 GUI Dashboard"])
+async def gui_log_stream():
+    """SSE: journalctl -u trinity-seller -f 실시간 스트리밍"""
+    async def event_generator():
+        proc = await asyncio.create_subprocess_exec(
+            "journalctl", "-u", "trinity-seller", "-f", "-n", "50", "--no-pager",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT
+        )
+        try:
+            while True:
+                line = await asyncio.wait_for(proc.stdout.readline(), timeout=30.0)
+                if not line:
+                    break
+                text = line.decode("utf-8", errors="replace").strip()
+                yield f"data: {text}\n\n"
+        except asyncio.TimeoutError:
+            yield f"data: [heartbeat]\n\n"
+        except Exception:
+            pass
+        finally:
+            proc.kill()
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.get("/gui/jobs", tags=["🎮 GUI Dashboard"])
+def gui_jobs():
+    """최근 Job 히스토리 (journalctl 파싱)"""
+    jobs = []
+    try:
+        r = subprocess.run(
+            ["journalctl", "-u", "trinity-seller", "--since", "24 hours ago",
+             "--no-pager", "-o", "short-iso"],
+            capture_output=True, text=True, timeout=10
+        )
+        for line in r.stdout.splitlines():
+            if "STEP1" in line and "New job" in line:
+                parts = line.split("ID=")
+                if len(parts) > 1:
+                    jid = parts[1].split(",")[0].strip()
+                    svc = parts[1].split("Service=")[1].strip() if "Service=" in parts[1] else "?"
+                    jobs.append({"job_id": jid, "service": svc, "type": "NEW", "line": line[:80]})
+            elif "COMPLETED" in line or "delivered" in line:
+                jobs.append({"type": "COMPLETED", "line": line[:80]})
+    except Exception:
+        pass
+    return {"jobs": jobs[-50:], "total": len(jobs)}
+
+
+# --- Multi-Agent CRUD ---
+@app.get("/gui/agents", tags=["🎮 GUI Dashboard"])
+def gui_list_agents():
+    """멀티에이전트 목록"""
+    agents = _load_agents()
+    # Private Key 마스킹
+    safe = []
+    for a in agents:
+        s = dict(a)
+        if "private_key" in s:
+            s["private_key"] = s["private_key"][:6] + "..." + s["private_key"][-4:]
+        safe.append(s)
+    return {"agents": safe}
+
+
+@app.post("/gui/agents", tags=["🎮 GUI Dashboard"])
+def gui_add_agent(body: dict):
+    """에이전트 등록"""
+    required = ["name", "wallet", "entity_id", "private_key", "role"]
+    for k in required:
+        if k not in body:
+            raise HTTPException(status_code=400, detail=f"Missing field: {k}")
+    agents = _load_agents()
+    body["id"] = str(int(time.time() * 1000))
+    agents.append(body)
+    _save_agents(agents)
+    return {"success": True, "agent": {**body, "private_key": body["private_key"][:6] + "..."}}
+
+
+@app.delete("/gui/agents/{agent_id}", tags=["🎮 GUI Dashboard"])
+def gui_delete_agent(agent_id: str):
+    """에이전트 삭제"""
+    agents = _load_agents()
+    agents = [a for a in agents if a.get("id") != agent_id]
+    _save_agents(agents)
+    return {"success": True}
+
+
+# --- Dashboard HTML 서빙 ---
+@app.get("/dashboard", include_in_schema=False)
+async def serve_dashboard():
+    """픽셀아트 GUI 대시보드"""
+    html_path = os.path.join(os.path.dirname(__file__), "static", "dashboard.html")
+    if not os.path.exists(html_path):
+        return HTMLResponse("<h1>dashboard.html not found</h1>", status_code=404)
+    with open(html_path, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read())
+
+
 # 서버 실행
 if __name__ == "__main__":
     import uvicorn
-    
+
     logger.info("Starting Trinity ACP Agent API Server...")
     logger.info("Swagger UI: http://localhost:8000/docs")
+    logger.info("Dashboard: http://localhost:8000/dashboard")
     logger.info("ReDoc: http://localhost:8000/redoc")
-    
+
     uvicorn.run(
         app,
         host="0.0.0.0",
