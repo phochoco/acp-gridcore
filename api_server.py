@@ -1218,6 +1218,91 @@ def gui_delete_agent(agent_id: str):
     _save_agents(agents)
     return {"success": True}
 
+# --- Revenue Dashboard ---
+@app.get("/gui/revenue", tags=["🎮 GUI Dashboard"])
+def gui_revenue(days: int = 7):
+    """수익 대시보드: 일별 수익, Job별 내역, 총 수익"""
+    import re
+    from collections import defaultdict
+
+    daily = defaultdict(lambda: {"revenue": 0.0, "jobs": 0, "completed": 0})
+    job_details = []
+
+    try:
+        r = subprocess.run(
+            ["/usr/bin/journalctl", "-u", "trinity-seller",
+             "--since", f"{days} days ago", "--no-pager", "-o", "short-iso"],
+            capture_output=True, text=True, timeout=15
+        )
+
+        # 서비스별 가격표
+        PRICES = {
+            "sectorFeed": 0.01, "dailySignal": 0.01, "dailyLuck": 0.01,
+            "deepSignal": 0.50, "deepLuck": 0.50, "agentMatch": 2.00,
+        }
+
+        current_jobs = {}  # job_id -> {service, date, price}
+
+        for line in r.stdout.splitlines():
+            # 날짜 추출 (ISO format: 2026-02-26T08:11:05+0000)
+            date_match = re.match(r"(\d{4}-\d{2}-\d{2})", line)
+            date_str = date_match.group(1) if date_match else "unknown"
+
+            # 새 Job 감지
+            if "STEP1" in line and "New job" in line:
+                id_match = re.search(r"ID=(\d+)", line)
+                svc_match = re.search(r"Service=(\w+)", line)
+                if id_match and svc_match:
+                    jid = id_match.group(1)
+                    svc = svc_match.group(1)
+                    price = PRICES.get(svc, 0.01)
+                    current_jobs[jid] = {"service": svc, "date": date_str, "price": price}
+                    daily[date_str]["jobs"] += 1
+
+            # Payment 확인
+            if "Payment request sent" in line:
+                id_match = re.search(r"Job (\d+)", line)
+                price_match = re.search(r"\$([0-9.]+)", line)
+                if id_match:
+                    jid = id_match.group(1)
+                    if jid in current_jobs:
+                        if price_match:
+                            current_jobs[jid]["price"] = float(price_match.group(1))
+
+            # COMPLETED 감지
+            if "delivered" in line or "evaluate" in line.lower():
+                id_match = re.search(r"Job (\d+)", line) or re.search(r"job (\d+)", line)
+                if id_match:
+                    jid = id_match.group(1)
+                    if jid in current_jobs:
+                        info = current_jobs[jid]
+                        daily[info["date"]]["completed"] += 1
+                        daily[info["date"]]["revenue"] += info["price"]
+                        job_details.append({
+                            "job_id": jid, "service": info["service"],
+                            "price": info["price"], "date": info["date"],
+                            "status": "COMPLETED"
+                        })
+
+    except Exception as e:
+        logger.warning(f"revenue parse error: {e}")
+
+    # 일별 정렬
+    daily_sorted = [{"date": k, **v} for k, v in sorted(daily.items())]
+    total_revenue = sum(d["revenue"] for d in daily_sorted)
+    total_completed = sum(d["completed"] for d in daily_sorted)
+    total_jobs = sum(d["jobs"] for d in daily_sorted)
+
+    return {
+        "total_revenue_usd": round(total_revenue, 4),
+        "total_jobs": total_jobs,
+        "total_completed": total_completed,
+        "success_rate": round(total_completed / max(total_jobs, 1) * 100, 1),
+        "daily": daily_sorted,
+        "recent_jobs": job_details[-30:],
+        "days": days,
+    }
+
 
 # --- Dashboard HTML 서빙 ---
 @app.get("/dashboard", include_in_schema=False)

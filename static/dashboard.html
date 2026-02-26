@@ -1,512 +1,1149 @@
 <!DOCTYPE html>
 <html lang="ko">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Trinity ACP — Pixel Dashboard</title>
-<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-:root{
-  --bg:#0d0d0d;--panel:#111827;--border:#1f2937;--accent:#7c3aed;
-  --neon:#e94560;--green:#10b981;--gold:#f59e0b;--text:#e2e8f0;--dim:#6b7280;
-  --pixel-font:'Press Start 2P',monospace;
-}
-body{background:var(--bg);color:var(--text);font-family:var(--pixel-font);font-size:10px;overflow-x:hidden}
-a{color:var(--accent);text-decoration:none}
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trinity ACP — Pixel Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box
+    }
 
-/* — Header — */
-.header{background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);padding:12px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--accent)}
-.header h1{font-size:14px;color:var(--text)}
-.header h1 span{color:var(--accent)}
-.header .status-pill{padding:4px 10px;border-radius:4px;font-size:8px;background:#1f2937}
-.header .status-pill.online{background:#064e3b;color:#34d399}
-.header .status-pill.offline{background:#7f1d1d;color:#fca5a5}
+    :root {
+      --bg: #0d0d0d;
+      --panel: #111827;
+      --border: #1f2937;
+      --accent: #7c3aed;
+      --neon: #e94560;
+      --green: #10b981;
+      --gold: #f59e0b;
+      --text: #e2e8f0;
+      --dim: #6b7280;
+      --pixel-font: 'Press Start 2P', monospace;
+    }
 
-/* — Tabs — */
-.tabs{display:flex;background:var(--panel);border-bottom:2px solid var(--border)}
-.tab{padding:10px 16px;cursor:pointer;color:var(--dim);font-size:8px;border-bottom:2px solid transparent;transition:all .2s}
-.tab:hover{color:var(--text)}
-.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--pixel-font);
+      font-size: 10px;
+      overflow-x: hidden
+    }
 
-/* — Layout — */
-.main{display:flex;height:calc(100vh - 84px)}
-.canvas-area{flex:1;padding:16px;overflow-y:auto}
-.side-panel{width:360px;border-left:2px solid var(--border);display:flex;flex-direction:column}
+    a {
+      color: var(--accent);
+      text-decoration: none
+    }
 
-/* — Tab Content — */
-.tab-content{display:none}
-.tab-content.active{display:block}
+    /* — Header — */
+    .header {
+      background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 2px solid var(--accent)
+    }
 
-/* — Canvas (Pixel World) — */
-.pixel-world{
-  background:linear-gradient(180deg,#0a0a1a 0%,#111827 100%);
-  border:2px solid var(--border);border-radius:8px;padding:20px;
-  min-height:400px;position:relative;
-  background-image:
-    radial-gradient(circle at 20% 30%,rgba(124,58,237,.08) 0%,transparent 50%),
-    radial-gradient(circle at 80% 70%,rgba(233,69,96,.06) 0%,transparent 50%);
-}
-.pixel-world .stars{position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none;overflow:hidden}
-.star{position:absolute;width:2px;height:2px;background:#fff;border-radius:50%;animation:twinkle 3s infinite}
-@keyframes twinkle{0%,100%{opacity:.2}50%{opacity:1}}
+    .header h1 {
+      font-size: 14px;
+      color: var(--text)
+    }
 
-/* — Agent Characters — */
-.agent-char{
-  display:inline-flex;flex-direction:column;align-items:center;gap:6px;
-  padding:16px;cursor:pointer;transition:transform .2s;position:relative;z-index:2;
-}
-.agent-char:hover{transform:scale(1.1)}
-.agent-char .sprite{font-size:48px;filter:drop-shadow(0 0 8px rgba(124,58,237,.5));animation:float 3s ease-in-out infinite}
-@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
-.agent-char .name{font-size:7px;color:var(--text);text-align:center}
-.agent-char .role{font-size:6px;color:var(--dim)}
-.agent-char .glow{position:absolute;top:8px;width:60px;height:60px;border-radius:50%;filter:blur(20px);opacity:.4;z-index:-1}
-.glow.online{background:var(--green)}
-.glow.offline{background:#ef4444}
+    .header h1 span {
+      color: var(--accent)
+    }
 
-.agents-row{display:flex;justify-content:center;gap:60px;margin-top:20px;flex-wrap:wrap}
+    .header .status-pill {
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 8px;
+      background: #1f2937
+    }
 
-/* — Service Cards — */
-.service-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-top:20px}
-.svc-card{
-  background:#1a1a2e;border:1px solid var(--border);border-radius:6px;padding:10px;
-  text-align:center;cursor:pointer;transition:all .2s;
-}
-.svc-card:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:0 4px 12px rgba(124,58,237,.2)}
-.svc-card .icon{font-size:24px;margin-bottom:6px}
-.svc-card .svc-name{font-size:7px;margin-bottom:4px}
-.svc-card .svc-price{font-size:6px;color:var(--gold)}
+    .header .status-pill.online {
+      background: #064e3b;
+      color: #34d399
+    }
 
-/* — Buttons — */
-.btn{
-  padding:8px 14px;border:2px solid var(--accent);background:transparent;color:var(--accent);
-  font-family:var(--pixel-font);font-size:8px;cursor:pointer;border-radius:4px;transition:all .2s;
-}
-.btn:hover{background:var(--accent);color:white}
-.btn.danger{border-color:var(--neon);color:var(--neon)}
-.btn.danger:hover{background:var(--neon);color:white}
-.btn.success{border-color:var(--green);color:var(--green)}
-.btn.success:hover{background:var(--green);color:white}
-.btn-row{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+    .header .status-pill.offline {
+      background: #7f1d1d;
+      color: #fca5a5
+    }
 
-/* — Log Viewer — */
-.log-viewer{flex:1;overflow-y:auto;background:#0a0a0a;padding:8px;font-family:'Courier New',monospace;font-size:9px;line-height:1.6}
-.log-line{padding:2px 4px;border-bottom:1px solid #1a1a1a;word-break:break-all}
-.log-line.step1{color:#60a5fa}
-.log-line.step2{color:#34d399}
-.log-line.error{color:#f87171}
-.log-line.eval{color:#fbbf24}
-.log-header{padding:8px;background:var(--panel);border-bottom:2px solid var(--border);font-size:8px;display:flex;justify-content:space-between;align-items:center}
+    /* — Tabs — */
+    .tabs {
+      display: flex;
+      background: var(--panel);
+      border-bottom: 2px solid var(--border)
+    }
 
-/* — Tables — */
-.data-table{width:100%;border-collapse:collapse;margin-top:12px}
-.data-table th{text-align:left;padding:6px 8px;font-size:7px;color:var(--dim);border-bottom:2px solid var(--border)}
-.data-table td{padding:6px 8px;font-size:7px;border-bottom:1px solid var(--border)}
-.badge{padding:2px 6px;border-radius:3px;font-size:6px;font-weight:bold}
-.badge.new{background:#1e3a5f;color:#60a5fa}
-.badge.done{background:#064e3b;color:#34d399}
-.badge.buyer{background:#4c1d95;color:#c4b5fd}
-.badge.seller{background:#78350f;color:#fbbf24}
+    .tab {
+      padding: 10px 16px;
+      cursor: pointer;
+      color: var(--dim);
+      font-size: 8px;
+      border-bottom: 2px solid transparent;
+      transition: all .2s
+    }
 
-/* — Forms — */
-.form-group{margin-bottom:12px}
-.form-group label{display:block;font-size:7px;color:var(--dim);margin-bottom:4px}
-.form-group input,.form-group select{
-  width:100%;padding:8px;background:#1a1a2e;border:1px solid var(--border);
-  color:var(--text);font-family:var(--pixel-font);font-size:8px;border-radius:4px;
-}
-.form-group input:focus,.form-group select:focus{border-color:var(--accent);outline:none}
+    .tab:hover {
+      color: var(--text)
+    }
 
-/* — Scheduler — */
-.schedule-item{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:10px;background:#1a1a2e;border:1px solid var(--border);border-radius:6px;margin-bottom:8px;
-}
-.schedule-item .info{font-size:7px}
-.schedule-item .time{font-size:8px;color:var(--gold)}
+    .tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent)
+    }
 
-/* — External Buyers Animation — */
-.incoming-buyer{
-  position:absolute;right:-40px;animation:slideIn 2s ease-out forwards;
-}
-@keyframes slideIn{from{right:-40px;opacity:0}to{right:20px;opacity:1}}
+    /* — Layout — */
+    .main {
+      display: flex;
+      height: calc(100vh - 84px)
+    }
 
-/* — Pixel Decorations — */
-.pixel-divider{height:2px;background:repeating-linear-gradient(90deg,var(--accent) 0,var(--accent) 4px,transparent 4px,transparent 8px);margin:16px 0}
+    .canvas-area {
+      flex: 1;
+      padding: 16px;
+      overflow-y: auto
+    }
 
-/* — Responsive — */
-@media(max-width:768px){
-  .main{flex-direction:column}
-  .side-panel{width:100%;height:300px;border-left:none;border-top:2px solid var(--border)}
-}
-</style>
+    .side-panel {
+      width: 360px;
+      border-left: 2px solid var(--border);
+      display: flex;
+      flex-direction: column
+    }
+
+    /* — Tab Content — */
+    .tab-content {
+      display: none
+    }
+
+    .tab-content.active {
+      display: block
+    }
+
+    /* — Canvas (Pixel World) — */
+    .pixel-world {
+      background: linear-gradient(180deg, #0a0a1a 0%, #111827 100%);
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      min-height: 400px;
+      position: relative;
+      background-image:
+        radial-gradient(circle at 20% 30%, rgba(124, 58, 237, .08) 0%, transparent 50%),
+        radial-gradient(circle at 80% 70%, rgba(233, 69, 96, .06) 0%, transparent 50%);
+    }
+
+    .pixel-world .stars {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      pointer-events: none;
+      overflow: hidden
+    }
+
+    .star {
+      position: absolute;
+      width: 2px;
+      height: 2px;
+      background: #fff;
+      border-radius: 50%;
+      animation: twinkle 3s infinite
+    }
+
+    @keyframes twinkle {
+
+      0%,
+      100% {
+        opacity: .2
+      }
+
+      50% {
+        opacity: 1
+      }
+    }
+
+    /* — Agent Characters — */
+    .agent-char {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding: 16px;
+      cursor: pointer;
+      transition: transform .2s;
+      position: relative;
+      z-index: 2;
+    }
+
+    .agent-char:hover {
+      transform: scale(1.1)
+    }
+
+    .agent-char .sprite {
+      font-size: 48px;
+      filter: drop-shadow(0 0 8px rgba(124, 58, 237, .5));
+      animation: float 3s ease-in-out infinite
+    }
+
+    @keyframes float {
+
+      0%,
+      100% {
+        transform: translateY(0)
+      }
+
+      50% {
+        transform: translateY(-6px)
+      }
+    }
+
+    .agent-char .name {
+      font-size: 7px;
+      color: var(--text);
+      text-align: center
+    }
+
+    .agent-char .role {
+      font-size: 6px;
+      color: var(--dim)
+    }
+
+    .agent-char .glow {
+      position: absolute;
+      top: 8px;
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      filter: blur(20px);
+      opacity: .4;
+      z-index: -1
+    }
+
+    .glow.online {
+      background: var(--green)
+    }
+
+    .glow.offline {
+      background: #ef4444
+    }
+
+    .agents-row {
+      display: flex;
+      justify-content: center;
+      gap: 60px;
+      margin-top: 20px;
+      flex-wrap: wrap
+    }
+
+    /* — Service Cards — */
+    .service-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 10px;
+      margin-top: 20px
+    }
+
+    .svc-card {
+      background: #1a1a2e;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+      text-align: center;
+      cursor: pointer;
+      transition: all .2s;
+    }
+
+    .svc-card:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(124, 58, 237, .2)
+    }
+
+    .svc-card .icon {
+      font-size: 24px;
+      margin-bottom: 6px
+    }
+
+    .svc-card .svc-name {
+      font-size: 7px;
+      margin-bottom: 4px
+    }
+
+    .svc-card .svc-price {
+      font-size: 6px;
+      color: var(--gold)
+    }
+
+    /* — Buttons — */
+    .btn {
+      padding: 8px 14px;
+      border: 2px solid var(--accent);
+      background: transparent;
+      color: var(--accent);
+      font-family: var(--pixel-font);
+      font-size: 8px;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: all .2s;
+    }
+
+    .btn:hover {
+      background: var(--accent);
+      color: white
+    }
+
+    .btn.danger {
+      border-color: var(--neon);
+      color: var(--neon)
+    }
+
+    .btn.danger:hover {
+      background: var(--neon);
+      color: white
+    }
+
+    .btn.success {
+      border-color: var(--green);
+      color: var(--green)
+    }
+
+    .btn.success:hover {
+      background: var(--green);
+      color: white
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+      flex-wrap: wrap
+    }
+
+    /* — Log Viewer — */
+    .log-viewer {
+      flex: 1;
+      overflow-y: auto;
+      background: #0a0a0a;
+      padding: 8px;
+      font-family: 'Courier New', monospace;
+      font-size: 9px;
+      line-height: 1.6
+    }
+
+    .log-line {
+      padding: 2px 4px;
+      border-bottom: 1px solid #1a1a1a;
+      word-break: break-all
+    }
+
+    .log-line.step1 {
+      color: #60a5fa
+    }
+
+    .log-line.step2 {
+      color: #34d399
+    }
+
+    .log-line.error {
+      color: #f87171
+    }
+
+    .log-line.eval {
+      color: #fbbf24
+    }
+
+    .log-header {
+      padding: 8px;
+      background: var(--panel);
+      border-bottom: 2px solid var(--border);
+      font-size: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center
+    }
+
+    /* — Tables — */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px
+    }
+
+    .data-table th {
+      text-align: left;
+      padding: 6px 8px;
+      font-size: 7px;
+      color: var(--dim);
+      border-bottom: 2px solid var(--border)
+    }
+
+    .data-table td {
+      padding: 6px 8px;
+      font-size: 7px;
+      border-bottom: 1px solid var(--border)
+    }
+
+    .badge {
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 6px;
+      font-weight: bold
+    }
+
+    .badge.new {
+      background: #1e3a5f;
+      color: #60a5fa
+    }
+
+    .badge.done {
+      background: #064e3b;
+      color: #34d399
+    }
+
+    .badge.buyer {
+      background: #4c1d95;
+      color: #c4b5fd
+    }
+
+    .badge.seller {
+      background: #78350f;
+      color: #fbbf24
+    }
+
+    /* — Forms — */
+    .form-group {
+      margin-bottom: 12px
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 7px;
+      color: var(--dim);
+      margin-bottom: 4px
+    }
+
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 8px;
+      background: #1a1a2e;
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: var(--pixel-font);
+      font-size: 8px;
+      border-radius: 4px;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+      border-color: var(--accent);
+      outline: none
+    }
+
+    /* — Scheduler — */
+    .schedule-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px;
+      background: #1a1a2e;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+
+    .schedule-item .info {
+      font-size: 7px
+    }
+
+    .schedule-item .time {
+      font-size: 8px;
+      color: var(--gold)
+    }
+
+    /* — External Buyers Animation — */
+    .incoming-buyer {
+      position: absolute;
+      right: -40px;
+      animation: slideIn 2s ease-out forwards;
+    }
+
+    @keyframes slideIn {
+      from {
+        right: -40px;
+        opacity: 0
+      }
+
+      to {
+        right: 20px;
+        opacity: 1
+      }
+    }
+
+    /* — Pixel Decorations — */
+    .pixel-divider {
+      height: 2px;
+      background: repeating-linear-gradient(90deg, var(--accent) 0, var(--accent) 4px, transparent 4px, transparent 8px);
+      margin: 16px 0
+    }
+
+    /* — Revenue Dashboard — */
+    .rev-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px
+    }
+
+    .rev-card {
+      background: linear-gradient(135deg, #1a1a2e, #16213e);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .rev-card::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px
+    }
+
+    .rev-card.gold::after {
+      background: linear-gradient(90deg, var(--gold), #fbbf24, var(--gold))
+    }
+
+    .rev-card.green::after {
+      background: linear-gradient(90deg, var(--green), #34d399, var(--green))
+    }
+
+    .rev-card.purple::after {
+      background: linear-gradient(90deg, var(--accent), #a855f7, var(--accent))
+    }
+
+    .rev-card.neon::after {
+      background: linear-gradient(90deg, var(--neon), #f472b6, var(--neon))
+    }
+
+    .rev-card .rv-icon {
+      font-size: 20px;
+      margin-bottom: 6px
+    }
+
+    .rev-card .rv-value {
+      font-size: 14px;
+      font-weight: bold;
+      margin-bottom: 4px
+    }
+
+    .rev-card .rv-label {
+      font-size: 6px;
+      color: var(--dim)
+    }
+
+    .chart-area {
+      background: #0a0a1a;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px
+    }
+
+    .chart-title {
+      font-size: 8px;
+      color: var(--dim);
+      margin-bottom: 12px
+    }
+
+    .bar-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px
+    }
+
+    .bar-date {
+      font-size: 6px;
+      color: var(--dim);
+      width: 60px;
+      text-align: right
+    }
+
+    .bar-track {
+      flex: 1;
+      height: 16px;
+      background: #1a1a2e;
+      border-radius: 3px;
+      overflow: hidden;
+      position: relative
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width .5s ease;
+      display: flex;
+      align-items: center;
+      padding-left: 4px;
+      font-size: 6px;
+      color: white
+    }
+
+    .bar-fill.high {
+      background: linear-gradient(90deg, var(--green), #34d399)
+    }
+
+    .bar-fill.mid {
+      background: linear-gradient(90deg, var(--accent), #a855f7)
+    }
+
+    .bar-fill.low {
+      background: linear-gradient(90deg, var(--gold), #fbbf24)
+    }
+
+    .bar-amount {
+      font-size: 6px;
+      color: var(--dim);
+      width: 50px
+    }
+
+    /* — Responsive — */
+    @media(max-width:768px) {
+      .main {
+        flex-direction: column
+      }
+
+      .side-panel {
+        width: 100%;
+        height: 300px;
+        border-left: none;
+        border-top: 2px solid var(--border)
+      }
+    }
+  </style>
 </head>
+
 <body>
 
-<!-- Header -->
-<div class="header">
-  <h1>⚡ Trinity <span>Protocol</span> — Command Center</h1>
-  <div class="status-pill" id="statusPill">Loading...</div>
-</div>
+  <!-- Header -->
+  <div class="header">
+    <h1>⚡ Trinity <span>Protocol</span> — Command Center</h1>
+    <div class="status-pill" id="statusPill">Loading...</div>
+  </div>
 
-<!-- Tabs -->
-<div class="tabs">
-  <div class="tab active" data-tab="canvas">🎮 Main</div>
-  <div class="tab" data-tab="schedule">⏰ Scheduler</div>
-  <div class="tab" data-tab="agents">🤖 Agents</div>
-  <div class="tab" data-tab="oracle">🏪 Oracle</div>
-</div>
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab active" data-tab="canvas">🎮 Main</div>
+    <div class="tab" data-tab="revenue">💰 Revenue</div>
+    <div class="tab" data-tab="schedule">⏰ Scheduler</div>
+    <div class="tab" data-tab="agents">🤖 Agents</div>
+    <div class="tab" data-tab="oracle">🏪 Oracle</div>
+  </div>
 
-<!-- Main Layout -->
-<div class="main">
-  <div class="canvas-area">
+  <!-- Main Layout -->
+  <div class="main">
+    <div class="canvas-area">
 
-    <!-- Tab 1: Main Canvas -->
-    <div class="tab-content active" id="tab-canvas">
-      <div class="pixel-world" id="pixelWorld">
-        <!-- Stars -->
-        <div class="stars" id="stars"></div>
+      <!-- Tab 1: Main Canvas -->
+      <div class="tab-content active" id="tab-canvas">
+        <div class="pixel-world" id="pixelWorld">
+          <!-- Stars -->
+          <div class="stars" id="stars"></div>
 
-        <!-- Agent Characters -->
-        <div class="agents-row">
-          <div class="agent-char" id="trinityAgent" onclick="showAgentInfo('seller')">
-            <div class="glow online" id="agentGlow"></div>
-            <div class="sprite">🧙</div>
-            <div class="name">Trinity Agent</div>
-            <div class="role">SELLER • $SAJU</div>
+          <!-- Agent Characters -->
+          <div class="agents-row">
+            <div class="agent-char" id="trinityAgent" onclick="showAgentInfo('seller')">
+              <div class="glow online" id="agentGlow"></div>
+              <div class="sprite">🧙</div>
+              <div class="name">Trinity Agent</div>
+              <div class="role">SELLER • $SAJU</div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px">
+              <div style="font-size:7px;color:var(--dim)">← JOBS →</div>
+              <div id="jobFlow" style="font-size:20px;opacity:.5">⚡</div>
+            </div>
+
+            <div class="agent-char" onclick="showAgentInfo('buyer')">
+              <div class="glow online"></div>
+              <div class="sprite" style="animation-delay:-1.5s">🌍</div>
+              <div class="name">Marketplace</div>
+              <div class="role">EXTERNAL BUYERS</div>
+            </div>
           </div>
 
-          <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px">
-            <div style="font-size:7px;color:var(--dim)">← JOBS →</div>
-            <div id="jobFlow" style="font-size:20px;opacity:.5">⚡</div>
-          </div>
-
-          <div class="agent-char" onclick="showAgentInfo('buyer')">
-            <div class="glow online"></div>
-            <div class="sprite" style="animation-delay:-1.5s">🌍</div>
-            <div class="name">Marketplace</div>
-            <div class="role">EXTERNAL BUYERS</div>
+          <!-- Service Cards -->
+          <div class="pixel-divider"></div>
+          <div style="font-size:8px;color:var(--dim);margin-bottom:8px">📦 SERVICES</div>
+          <div class="service-grid">
+            <div class="svc-card" onclick="alert('sectorFeed: Real-time crypto sector signal')">
+              <div class="icon">🌐</div>
+              <div class="svc-name">sectorFeed</div>
+              <div class="svc-price">$0.01</div>
+            </div>
+            <div class="svc-card" onclick="alert('dailySignal: Personalized trading signal')">
+              <div class="icon">📈</div>
+              <div class="svc-name">dailySignal</div>
+              <div class="svc-price">$0.01</div>
+            </div>
+            <div class="svc-card" onclick="alert('deepSignal: 24H hourly Saju analysis')">
+              <div class="icon">🔮</div>
+              <div class="svc-name">deepSignal</div>
+              <div class="svc-price">$0.50</div>
+            </div>
+            <div class="svc-card" onclick="alert('dailyLuck: Daily trading luck score')">
+              <div class="icon">🎲</div>
+              <div class="svc-name">dailyLuck</div>
+              <div class="svc-price">$0.01</div>
+            </div>
+            <div class="svc-card" onclick="alert('deepLuck: Premium 24H hourly analysis')">
+              <div class="icon">💎</div>
+              <div class="svc-name">deepLuck</div>
+              <div class="svc-price">$0.50</div>
+            </div>
+            <div class="svc-card" onclick="alert('agentMatch: Multi-agent compatibility analysis')">
+              <div class="icon">🤝</div>
+              <div class="svc-name">agentMatch</div>
+              <div class="svc-price">$2.00</div>
+            </div>
           </div>
         </div>
 
-        <!-- Service Cards -->
+        <!-- Control Buttons -->
+        <div class="btn-row">
+          <button class="btn success" onclick="sellerAction('restart')">🔄 Restart Seller</button>
+          <button class="btn" onclick="sellerAction('stop')">🔴 Stop</button>
+          <button class="btn" onclick="sellerAction('start')">🟢 Start</button>
+          <button class="btn" style="border-color:var(--gold);color:var(--gold)" onclick="runE2E()">🚀 Run E2E</button>
+          <button class="btn" onclick="refreshStatus()">📊 Refresh</button>
+        </div>
+
+        <!-- Job History -->
         <div class="pixel-divider"></div>
-        <div style="font-size:8px;color:var(--dim);margin-bottom:8px">📦 SERVICES</div>
-        <div class="service-grid">
-          <div class="svc-card" onclick="alert('sectorFeed: Real-time crypto sector signal')">
-            <div class="icon">🌐</div><div class="svc-name">sectorFeed</div><div class="svc-price">$0.01</div>
+        <div style="font-size:8px;color:var(--dim);margin-bottom:8px">📋 RECENT JOBS (24h)</div>
+        <table class="data-table" id="jobTable">
+          <thead>
+            <tr>
+              <th>Job ID</th>
+              <th>Service</th>
+              <th>Status</th>
+              <th>Log</th>
+            </tr>
+          </thead>
+          <tbody id="jobBody"></tbody>
+        </table>
+      </div>
+
+      <!-- Tab: Revenue Dashboard -->
+      <div class="tab-content" id="tab-revenue">
+        <div style="font-size:10px;margin-bottom:16px">💰 Revenue Dashboard</div>
+
+        <!-- Summary Cards -->
+        <div class="rev-cards">
+          <div class="rev-card gold">
+            <div class="rv-icon">💰</div>
+            <div class="rv-value" id="rvTotal">$0.00</div>
+            <div class="rv-label">TOTAL REVENUE</div>
           </div>
-          <div class="svc-card" onclick="alert('dailySignal: Personalized trading signal')">
-            <div class="icon">📈</div><div class="svc-name">dailySignal</div><div class="svc-price">$0.01</div>
+          <div class="rev-card green">
+            <div class="rv-icon">✅</div>
+            <div class="rv-value" id="rvCompleted">0</div>
+            <div class="rv-label">COMPLETED JOBS</div>
           </div>
-          <div class="svc-card" onclick="alert('deepSignal: 24H hourly Saju analysis')">
-            <div class="icon">🔮</div><div class="svc-name">deepSignal</div><div class="svc-price">$0.50</div>
+          <div class="rev-card purple">
+            <div class="rv-icon">📋</div>
+            <div class="rv-value" id="rvJobs">0</div>
+            <div class="rv-label">TOTAL JOBS</div>
           </div>
-          <div class="svc-card" onclick="alert('dailyLuck: Daily trading luck score')">
-            <div class="icon">🎲</div><div class="svc-name">dailyLuck</div><div class="svc-price">$0.01</div>
+          <div class="rev-card neon">
+            <div class="rv-icon">🎯</div>
+            <div class="rv-value" id="rvRate">0%</div>
+            <div class="rv-label">SUCCESS RATE</div>
           </div>
-          <div class="svc-card" onclick="alert('deepLuck: Premium 24H hourly analysis')">
-            <div class="icon">💎</div><div class="svc-name">deepLuck</div><div class="svc-price">$0.50</div>
-          </div>
-          <div class="svc-card" onclick="alert('agentMatch: Multi-agent compatibility analysis')">
-            <div class="icon">🤝</div><div class="svc-name">agentMatch</div><div class="svc-price">$2.00</div>
-          </div>
+        </div>
+
+        <!-- Daily Revenue Chart -->
+        <div class="chart-area">
+          <div class="chart-title">📊 DAILY REVENUE (7 days)</div>
+          <div id="dailyChart"></div>
+        </div>
+
+        <!-- Recent Job Revenue -->
+        <div style="font-size:8px;color:var(--dim);margin-bottom:8px">📋 RECENT JOB REVENUE</div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Job ID</th>
+              <th>Service</th>
+              <th>Price</th>
+              <th>Date</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="rvJobBody"></tbody>
+        </table>
+
+        <div class="btn-row">
+          <button class="btn" onclick="loadRevenue()">🔄 Refresh</button>
+          <button class="btn" onclick="loadRevenue(30)">📅 30 Days</button>
         </div>
       </div>
 
-      <!-- Control Buttons -->
-      <div class="btn-row">
-        <button class="btn success" onclick="sellerAction('restart')">🔄 Restart Seller</button>
-        <button class="btn" onclick="sellerAction('stop')">🔴 Stop</button>
-        <button class="btn" onclick="sellerAction('start')">🟢 Start</button>
-        <button class="btn" style="border-color:var(--gold);color:var(--gold)" onclick="runE2E()">🚀 Run E2E</button>
-        <button class="btn" onclick="refreshStatus()">📊 Refresh</button>
+      <!-- Tab 2: Scheduler -->
+      <div class="tab-content" id="tab-schedule">
+        <div style="font-size:10px;margin-bottom:12px">⏰ Job Scheduler</div>
+        <div style="font-size:7px;color:var(--dim);margin-bottom:16px">크론 스케줄을 등록하면 자동으로 E2E 테스트를 반복 실행합니다.</div>
+
+        <div id="scheduleList">
+          <div class="schedule-item">
+            <div>
+              <div class="info">🤖 Bot Marketing</div>
+              <div class="time">Every 30 min</div>
+            </div>
+            <span class="badge done">ACTIVE</span>
+          </div>
+          <div class="schedule-item">
+            <div>
+              <div class="info">📊 Daily Report</div>
+              <div class="time">09:00 KST</div>
+            </div>
+            <span class="badge done">ACTIVE</span>
+          </div>
+        </div>
+
+        <div class="pixel-divider"></div>
+        <div style="font-size:8px;margin-bottom:8px">➕ 새 스케줄 추가 (Coming Soon)</div>
+        <div class="form-group">
+          <label>서비스</label>
+          <select disabled>
+            <option>sectorFeed</option>
+            <option>dailySignal</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>반복 주기</label>
+          <select disabled>
+            <option>매 1시간</option>
+            <option>매 6시간</option>
+            <option>매일</option>
+          </select>
+        </div>
+        <button class="btn" disabled>등록 (준비 중)</button>
       </div>
 
-      <!-- Job History -->
-      <div class="pixel-divider"></div>
-      <div style="font-size:8px;color:var(--dim);margin-bottom:8px">📋 RECENT JOBS (24h)</div>
-      <table class="data-table" id="jobTable">
-        <thead><tr><th>Job ID</th><th>Service</th><th>Status</th><th>Log</th></tr></thead>
-        <tbody id="jobBody"></tbody>
-      </table>
+      <!-- Tab 3: Multi-Agent -->
+      <div class="tab-content" id="tab-agents">
+        <div style="font-size:10px;margin-bottom:12px">🤖 Multi-Agent Manager</div>
+
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Wallet</th>
+              <th>Role</th>
+              <th>Entity</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="agentBody"></tbody>
+        </table>
+
+        <div class="pixel-divider"></div>
+        <div style="font-size:8px;margin-bottom:8px">➕ 에이전트 등록</div>
+        <div class="form-group"><label>Name</label><input id="aName" placeholder="e.g. Trinity Oracle"></div>
+        <div class="form-group"><label>Wallet Address</label><input id="aWallet" placeholder="0x..."></div>
+        <div class="form-group"><label>Entity ID</label><input id="aEntity" type="number" placeholder="1"></div>
+        <div class="form-group"><label>Private Key</label><input id="aKey" type="password" placeholder="Secret key">
+        </div>
+        <div class="form-group"><label>Role</label>
+          <select id="aRole">
+            <option value="buyer">Buyer</option>
+            <option value="seller">Seller</option>
+            <option value="both">Both</option>
+          </select>
+        </div>
+        <button class="btn success" onclick="addAgent()">등록</button>
+      </div>
+
+      <!-- Tab 4: Oracle (Self-Purchase) -->
+      <div class="tab-content" id="tab-oracle">
+        <div style="font-size:10px;margin-bottom:12px">🏪 Oracle — Self-Purchase Test</div>
+        <div style="font-size:7px;color:var(--dim);margin-bottom:16px">
+          Oracle(자기 결제 바이어)를 이용한 E2E 테스트.<br>
+          acp_e2e_unified.py와 동일한 흐름을 GUI에서 실행합니다.
+        </div>
+
+        <div class="agents-row" style="justify-content:flex-start;gap:30px">
+          <div class="agent-char" style="transform:scale(.8)">
+            <div class="sprite">🏪</div>
+            <div class="name">Oracle</div>
+            <div class="role">TEST BUYER</div>
+          </div>
+          <div style="font-size:14px;align-self:center">→</div>
+          <div class="agent-char" style="transform:scale(.8)">
+            <div class="sprite">🧙</div>
+            <div class="name">Trinity</div>
+            <div class="role">SELLER</div>
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn" style="border-color:var(--gold);color:var(--gold)" onclick="runE2E()">🚀 Run E2E Test (3
+            Jobs)</button>
+        </div>
+
+        <div class="pixel-divider"></div>
+        <div style="font-size:8px;color:var(--dim)">E2E 실행 결과는 우측 로그 패널에서 확인하세요.</div>
+      </div>
     </div>
 
-    <!-- Tab 2: Scheduler -->
-    <div class="tab-content" id="tab-schedule">
-      <div style="font-size:10px;margin-bottom:12px">⏰ Job Scheduler</div>
-      <div style="font-size:7px;color:var(--dim);margin-bottom:16px">크론 스케줄을 등록하면 자동으로 E2E 테스트를 반복 실행합니다.</div>
-
-      <div id="scheduleList">
-        <div class="schedule-item">
-          <div>
-            <div class="info">🤖 Bot Marketing</div>
-            <div class="time">Every 30 min</div>
-          </div>
-          <span class="badge done">ACTIVE</span>
-        </div>
-        <div class="schedule-item">
-          <div>
-            <div class="info">📊 Daily Report</div>
-            <div class="time">09:00 KST</div>
-          </div>
-          <span class="badge done">ACTIVE</span>
-        </div>
+    <!-- Side Panel: Live Logs -->
+    <div class="side-panel">
+      <div class="log-header">
+        <span>📡 LIVE LOGS</span>
+        <button class="btn" style="font-size:6px;padding:4px 8px" onclick="clearLogs()">Clear</button>
       </div>
-
-      <div class="pixel-divider"></div>
-      <div style="font-size:8px;margin-bottom:8px">➕ 새 스케줄 추가 (Coming Soon)</div>
-      <div class="form-group">
-        <label>서비스</label>
-        <select disabled><option>sectorFeed</option><option>dailySignal</option></select>
+      <div class="log-viewer" id="logViewer">
+        <div class="log-line" style="color:var(--dim)">Connecting to log stream...</div>
       </div>
-      <div class="form-group">
-        <label>반복 주기</label>
-        <select disabled><option>매 1시간</option><option>매 6시간</option><option>매일</option></select>
-      </div>
-      <button class="btn" disabled>등록 (준비 중)</button>
-    </div>
-
-    <!-- Tab 3: Multi-Agent -->
-    <div class="tab-content" id="tab-agents">
-      <div style="font-size:10px;margin-bottom:12px">🤖 Multi-Agent Manager</div>
-
-      <table class="data-table">
-        <thead><tr><th>Name</th><th>Wallet</th><th>Role</th><th>Entity</th><th>Action</th></tr></thead>
-        <tbody id="agentBody"></tbody>
-      </table>
-
-      <div class="pixel-divider"></div>
-      <div style="font-size:8px;margin-bottom:8px">➕ 에이전트 등록</div>
-      <div class="form-group"><label>Name</label><input id="aName" placeholder="e.g. Trinity Oracle"></div>
-      <div class="form-group"><label>Wallet Address</label><input id="aWallet" placeholder="0x..."></div>
-      <div class="form-group"><label>Entity ID</label><input id="aEntity" type="number" placeholder="1"></div>
-      <div class="form-group"><label>Private Key</label><input id="aKey" type="password" placeholder="Secret key"></div>
-      <div class="form-group"><label>Role</label>
-        <select id="aRole"><option value="buyer">Buyer</option><option value="seller">Seller</option><option value="both">Both</option></select>
-      </div>
-      <button class="btn success" onclick="addAgent()">등록</button>
-    </div>
-
-    <!-- Tab 4: Oracle (Self-Purchase) -->
-    <div class="tab-content" id="tab-oracle">
-      <div style="font-size:10px;margin-bottom:12px">🏪 Oracle — Self-Purchase Test</div>
-      <div style="font-size:7px;color:var(--dim);margin-bottom:16px">
-        Oracle(자기 결제 바이어)를 이용한 E2E 테스트.<br>
-        acp_e2e_unified.py와 동일한 흐름을 GUI에서 실행합니다.
-      </div>
-
-      <div class="agents-row" style="justify-content:flex-start;gap:30px">
-        <div class="agent-char" style="transform:scale(.8)">
-          <div class="sprite">🏪</div>
-          <div class="name">Oracle</div>
-          <div class="role">TEST BUYER</div>
-        </div>
-        <div style="font-size:14px;align-self:center">→</div>
-        <div class="agent-char" style="transform:scale(.8)">
-          <div class="sprite">🧙</div>
-          <div class="name">Trinity</div>
-          <div class="role">SELLER</div>
-        </div>
-      </div>
-
-      <div class="btn-row">
-        <button class="btn" style="border-color:var(--gold);color:var(--gold)" onclick="runE2E()">🚀 Run E2E Test (3 Jobs)</button>
-      </div>
-
-      <div class="pixel-divider"></div>
-      <div style="font-size:8px;color:var(--dim)">E2E 실행 결과는 우측 로그 패널에서 확인하세요.</div>
     </div>
   </div>
 
-  <!-- Side Panel: Live Logs -->
-  <div class="side-panel">
-    <div class="log-header">
-      <span>📡 LIVE LOGS</span>
-      <button class="btn" style="font-size:6px;padding:4px 8px" onclick="clearLogs()">Clear</button>
-    </div>
-    <div class="log-viewer" id="logViewer">
-      <div class="log-line" style="color:var(--dim)">Connecting to log stream...</div>
-    </div>
-  </div>
-</div>
+  <script>
+    // === Tab Navigation ===
+    document.querySelectorAll('.tab').forEach(t => {
+      t.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(x => x.classList.remove('active'));
+        t.classList.add('active');
+        document.getElementById('tab-' + t.dataset.tab).classList.add('active');
+      });
+    });
 
-<script>
-// === Tab Navigation ===
-document.querySelectorAll('.tab').forEach(t => {
-  t.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(x => x.classList.remove('active'));
-    t.classList.add('active');
-    document.getElementById('tab-' + t.dataset.tab).classList.add('active');
-  });
-});
+    // === Stars ===
+    (function generateStars() {
+      const c = document.getElementById('stars');
+      for (let i = 0; i < 40; i++) {
+        const s = document.createElement('div');
+        s.className = 'star';
+        s.style.left = Math.random() * 100 + '%';
+        s.style.top = Math.random() * 100 + '%';
+        s.style.animationDelay = Math.random() * 3 + 's';
+        s.style.opacity = Math.random() * 0.5 + 0.1;
+        c.appendChild(s);
+      }
+    })();
 
-// === Stars ===
-(function generateStars() {
-  const c = document.getElementById('stars');
-  for (let i = 0; i < 40; i++) {
-    const s = document.createElement('div');
-    s.className = 'star';
-    s.style.left = Math.random() * 100 + '%';
-    s.style.top = Math.random() * 100 + '%';
-    s.style.animationDelay = Math.random() * 3 + 's';
-    s.style.opacity = Math.random() * 0.5 + 0.1;
-    c.appendChild(s);
-  }
-})();
+    // === API Calls ===
+    const API = '';
 
-// === API Calls ===
-const API = '';
+    async function refreshStatus() {
+      try {
+        const r = await fetch(API + '/gui/status');
+        const d = await r.json();
+        const pill = document.getElementById('statusPill');
+        pill.textContent = d.seller_active ? '🟢 ONLINE' : '🔴 OFFLINE';
+        pill.className = 'status-pill ' + (d.seller_active ? 'online' : 'offline');
+        document.getElementById('agentGlow').className = 'glow ' + (d.seller_active ? 'online' : 'offline');
+      } catch (e) {
+        document.getElementById('statusPill').textContent = '⚠️ API Error';
+      }
+    }
 
-async function refreshStatus() {
-  try {
-    const r = await fetch(API + '/gui/status');
-    const d = await r.json();
-    const pill = document.getElementById('statusPill');
-    pill.textContent = d.seller_active ? '🟢 ONLINE' : '🔴 OFFLINE';
-    pill.className = 'status-pill ' + (d.seller_active ? 'online' : 'offline');
-    document.getElementById('agentGlow').className = 'glow ' + (d.seller_active ? 'online' : 'offline');
-  } catch(e) {
-    document.getElementById('statusPill').textContent = '⚠️ API Error';
-  }
-}
+    async function sellerAction(action) {
+      if (!confirm(`Seller를 ${action} 하시겠습니까?`)) return;
+      try {
+        const r = await fetch(API + '/gui/seller/' + action, { method: 'POST' });
+        const d = await r.json();
+        alert(d.success ? `✅ ${action} 성공!` : `❌ 실패: ${d.output}`);
+        setTimeout(refreshStatus, 2000);
+      } catch (e) { alert('Error: ' + e); }
+    }
 
-async function sellerAction(action) {
-  if (!confirm(`Seller를 ${action} 하시겠습니까?`)) return;
-  try {
-    const r = await fetch(API + '/gui/seller/' + action, {method:'POST'});
-    const d = await r.json();
-    alert(d.success ? `✅ ${action} 성공!` : `❌ 실패: ${d.output}`);
-    setTimeout(refreshStatus, 2000);
-  } catch(e) { alert('Error: ' + e); }
-}
+    async function runE2E() {
+      if (!confirm('E2E 테스트 (3 Jobs)를 실행하시겠습니까?')) return;
+      try {
+        const r = await fetch(API + '/gui/run-e2e', { method: 'POST' });
+        const d = await r.json();
+        addLogLine(`[GUI] 🚀 E2E 시작 (PID: ${d.pid})`, 'eval');
+      } catch (e) { alert('Error: ' + e); }
+    }
 
-async function runE2E() {
-  if (!confirm('E2E 테스트 (3 Jobs)를 실행하시겠습니까?')) return;
-  try {
-    const r = await fetch(API + '/gui/run-e2e', {method:'POST'});
-    const d = await r.json();
-    addLogLine(`[GUI] 🚀 E2E 시작 (PID: ${d.pid})`, 'eval');
-  } catch(e) { alert('Error: ' + e); }
-}
-
-async function loadJobs() {
-  try {
-    const r = await fetch(API + '/gui/jobs');
-    const d = await r.json();
-    const body = document.getElementById('jobBody');
-    body.innerHTML = '';
-    d.jobs.slice(-20).reverse().forEach(j => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
+    async function loadJobs() {
+      try {
+        const r = await fetch(API + '/gui/jobs');
+        const d = await r.json();
+        const body = document.getElementById('jobBody');
+        body.innerHTML = '';
+        d.jobs.slice(-20).reverse().forEach(j => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
         <td>${j.job_id || '-'}</td>
         <td>${j.service || '-'}</td>
-        <td><span class="badge ${j.type==='NEW'?'new':'done'}">${j.type}</span></td>
+        <td><span class="badge ${j.type === 'NEW' ? 'new' : 'done'}">${j.type}</span></td>
         <td style="font-size:6px;color:var(--dim)">${j.line || ''}</td>
       `;
-      body.appendChild(tr);
-    });
-  } catch(e) {}
-}
+          body.appendChild(tr);
+        });
+      } catch (e) { }
+    }
 
-// === Multi-Agent ===
-async function loadAgents() {
-  try {
-    const r = await fetch(API + '/gui/agents');
-    const d = await r.json();
-    const body = document.getElementById('agentBody');
-    body.innerHTML = '';
-    d.agents.forEach(a => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
+    // === Multi-Agent ===
+    async function loadAgents() {
+      try {
+        const r = await fetch(API + '/gui/agents');
+        const d = await r.json();
+        const body = document.getElementById('agentBody');
+        body.innerHTML = '';
+        d.agents.forEach(a => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
         <td>${a.name}</td>
-        <td style="font-size:6px">${a.wallet ? a.wallet.slice(0,10)+'...' : '-'}</td>
-        <td><span class="badge ${a.role==='buyer'?'buyer':'seller'}">${a.role}</span></td>
+        <td style="font-size:6px">${a.wallet ? a.wallet.slice(0, 10) + '...' : '-'}</td>
+        <td><span class="badge ${a.role === 'buyer' ? 'buyer' : 'seller'}">${a.role}</span></td>
         <td>${a.entity_id}</td>
         <td><button class="btn danger" style="font-size:6px;padding:2px 6px" onclick="deleteAgent('${a.id}')">❌</button></td>
       `;
-      body.appendChild(tr);
-    });
-  } catch(e) {}
-}
+          body.appendChild(tr);
+        });
+      } catch (e) { }
+    }
 
-async function addAgent() {
-  const body = {
-    name: document.getElementById('aName').value,
-    wallet: document.getElementById('aWallet').value,
-    entity_id: parseInt(document.getElementById('aEntity').value),
-    private_key: document.getElementById('aKey').value,
-    role: document.getElementById('aRole').value,
-  };
-  if (!body.name || !body.wallet || !body.private_key) { alert('모든 필드를 입력하세요'); return; }
-  try {
-    await fetch(API + '/gui/agents', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
-    alert('✅ 등록 완료!');
+    async function addAgent() {
+      const body = {
+        name: document.getElementById('aName').value,
+        wallet: document.getElementById('aWallet').value,
+        entity_id: parseInt(document.getElementById('aEntity').value),
+        private_key: document.getElementById('aKey').value,
+        role: document.getElementById('aRole').value,
+      };
+      if (!body.name || !body.wallet || !body.private_key) { alert('모든 필드를 입력하세요'); return; }
+      try {
+        await fetch(API + '/gui/agents', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        alert('✅ 등록 완료!');
+        loadAgents();
+        ['aName', 'aWallet', 'aEntity', 'aKey'].forEach(id => document.getElementById(id).value = '');
+      } catch (e) { alert('Error: ' + e); }
+    }
+
+    async function deleteAgent(id) {
+      if (!confirm('삭제하시겠습니까?')) return;
+      await fetch(API + '/gui/agents/' + id, { method: 'DELETE' });
+      loadAgents();
+    }
+
+    // === SSE Log Stream ===
+    function connectLogStream() {
+      const viewer = document.getElementById('logViewer');
+      const es = new EventSource(API + '/gui/logs/stream');
+
+      es.onmessage = (e) => {
+        if (e.data === '[heartbeat]') return;
+        addLogLine(e.data);
+      };
+
+      es.onerror = () => {
+        addLogLine('[GUI] ⚠️ Log stream disconnected. Reconnecting...', 'error');
+        es.close();
+        setTimeout(connectLogStream, 5000);
+      };
+    }
+
+    function addLogLine(text, forceClass) {
+      const viewer = document.getElementById('logViewer');
+      const div = document.createElement('div');
+      div.className = 'log-line';
+
+      if (forceClass) { div.classList.add(forceClass); }
+      else if (text.includes('STEP1') || text.includes('New job')) div.classList.add('step1');
+      else if (text.includes('STEP2') || text.includes('deliver')) div.classList.add('step2');
+      else if (text.includes('error') || text.includes('Error') || text.includes('❌')) div.classList.add('error');
+      else if (text.includes('evaluate') || text.includes('COMPLETED')) div.classList.add('eval');
+
+      div.textContent = text;
+      viewer.appendChild(div);
+      viewer.scrollTop = viewer.scrollHeight;
+
+      // Keep max 200 lines
+      while (viewer.children.length > 200) viewer.removeChild(viewer.firstChild);
+    }
+
+    function clearLogs() {
+      document.getElementById('logViewer').innerHTML = '<div class="log-line" style="color:var(--dim)">Logs cleared.</div>';
+    }
+
+    function showAgentInfo(type) {
+      if (type === 'seller') alert('🧙 Trinity Agent (Seller)\nWallet: 0xaC44...2dEB\nServices: 6 active\nStatus: Online');
+      else alert('🌍 Marketplace\nAnyone on ACP can send jobs to Trinity Agent');
+    }
+
+    // === Revenue ===
+    async function loadRevenue(days = 7) {
+      try {
+        const r = await fetch(API + '/gui/revenue?days=' + days);
+        const d = await r.json();
+
+        document.getElementById('rvTotal').textContent = '$' + d.total_revenue_usd.toFixed(2);
+        document.getElementById('rvCompleted').textContent = d.total_completed;
+        document.getElementById('rvJobs').textContent = d.total_jobs;
+        document.getElementById('rvRate').textContent = d.success_rate + '%';
+
+        // Daily bar chart
+        const chart = document.getElementById('dailyChart');
+        chart.innerHTML = '';
+        const maxRev = Math.max(...d.daily.map(x => x.revenue), 0.01);
+        d.daily.forEach(day => {
+          const pct = Math.max((day.revenue / maxRev) * 100, 2);
+          const cls = day.revenue >= 0.1 ? 'high' : day.revenue >= 0.05 ? 'mid' : 'low';
+          chart.innerHTML += `
+        <div class="bar-row">
+          <div class="bar-date">${day.date.slice(5)}</div>
+          <div class="bar-track">
+            <div class="bar-fill ${cls}" style="width:${pct}%">${day.completed}J</div>
+          </div>
+          <div class="bar-amount">$${day.revenue.toFixed(2)}</div>
+        </div>`;
+        });
+
+        // Job revenue table
+        const body = document.getElementById('rvJobBody');
+        body.innerHTML = '';
+        d.recent_jobs.slice(-15).reverse().forEach(j => {
+          body.innerHTML += `<tr>
+        <td>${j.job_id}</td>
+        <td>${j.service}</td>
+        <td style="color:var(--gold)">$${j.price.toFixed(2)}</td>
+        <td>${j.date}</td>
+        <td><span class="badge done">${j.status}</span></td>
+      </tr>`;
+        });
+      } catch (e) { console.error('revenue error:', e); }
+    }
+
+    // === Init ===
+    refreshStatus();
+    loadJobs();
     loadAgents();
-    ['aName','aWallet','aEntity','aKey'].forEach(id => document.getElementById(id).value = '');
-  } catch(e) { alert('Error: ' + e); }
-}
-
-async function deleteAgent(id) {
-  if (!confirm('삭제하시겠습니까?')) return;
-  await fetch(API + '/gui/agents/' + id, {method:'DELETE'});
-  loadAgents();
-}
-
-// === SSE Log Stream ===
-function connectLogStream() {
-  const viewer = document.getElementById('logViewer');
-  const es = new EventSource(API + '/gui/logs/stream');
-
-  es.onmessage = (e) => {
-    if (e.data === '[heartbeat]') return;
-    addLogLine(e.data);
-  };
-
-  es.onerror = () => {
-    addLogLine('[GUI] ⚠️ Log stream disconnected. Reconnecting...', 'error');
-    es.close();
-    setTimeout(connectLogStream, 5000);
-  };
-}
-
-function addLogLine(text, forceClass) {
-  const viewer = document.getElementById('logViewer');
-  const div = document.createElement('div');
-  div.className = 'log-line';
-
-  if (forceClass) { div.classList.add(forceClass); }
-  else if (text.includes('STEP1') || text.includes('New job')) div.classList.add('step1');
-  else if (text.includes('STEP2') || text.includes('deliver')) div.classList.add('step2');
-  else if (text.includes('error') || text.includes('Error') || text.includes('❌')) div.classList.add('error');
-  else if (text.includes('evaluate') || text.includes('COMPLETED')) div.classList.add('eval');
-
-  div.textContent = text;
-  viewer.appendChild(div);
-  viewer.scrollTop = viewer.scrollHeight;
-
-  // Keep max 200 lines
-  while (viewer.children.length > 200) viewer.removeChild(viewer.firstChild);
-}
-
-function clearLogs() {
-  document.getElementById('logViewer').innerHTML = '<div class="log-line" style="color:var(--dim)">Logs cleared.</div>';
-}
-
-function showAgentInfo(type) {
-  if (type === 'seller') alert('🧙 Trinity Agent (Seller)\nWallet: 0xaC44...2dEB\nServices: 6 active\nStatus: Online');
-  else alert('🌍 Marketplace\nAnyone on ACP can send jobs to Trinity Agent');
-}
-
-// === Init ===
-refreshStatus();
-loadJobs();
-loadAgents();
-connectLogStream();
-setInterval(refreshStatus, 30000);
-setInterval(loadJobs, 60000);
-</script>
+    loadRevenue();
+    connectLogStream();
+    setInterval(refreshStatus, 30000);
+    setInterval(loadJobs, 60000);
+  </script>
 </body>
+
 </html>
