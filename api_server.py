@@ -1304,6 +1304,161 @@ def gui_revenue(days: int = 7):
     }
 
 
+# --- Spam Filter ---
+SPAM_FILE = os.path.join(os.path.dirname(__file__), "spam_filter.json")
+
+def _load_spam():
+    if os.path.exists(SPAM_FILE):
+        with open(SPAM_FILE, "r") as f:
+            return _json.load(f)
+    return {"blocked_addresses": [], "blocked_keywords": ["hack","scam","exploit","bypass","dump","rug","phish","fake","fraud"], "max_request_size": 1024}
+
+def _save_spam(data):
+    with open(SPAM_FILE, "w") as f:
+        _json.dump(data, f, indent=2)
+
+@app.get("/gui/spam", tags=["🛡️ Spam Filter"])
+def gui_get_spam():
+    """스팸 필터 설정 조회"""
+    return _load_spam()
+
+@app.post("/gui/spam", tags=["🛡️ Spam Filter"])
+def gui_update_spam(body: dict):
+    """스팸 필터 설정 업데이트"""
+    current = _load_spam()
+    if "blocked_addresses" in body:
+        current["blocked_addresses"] = body["blocked_addresses"]
+    if "blocked_keywords" in body:
+        current["blocked_keywords"] = body["blocked_keywords"]
+    if "max_request_size" in body:
+        current["max_request_size"] = int(body["max_request_size"])
+    _save_spam(current)
+
+    # acp_seller.py의 BLOCKED_KEYWORDS를 동적으로 업데이트하려면
+    # 셀러 서비스 재시작이 필요하므로 안내 메시지 반환
+    return {"success": True, "data": current, "note": "Restart seller to apply changes"}
+
+@app.post("/gui/spam/address", tags=["🛡️ Spam Filter"])
+def gui_add_blocked_address(body: dict):
+    """블랙리스트 주소 추가"""
+    addr = body.get("address", "").strip()
+    if not addr:
+        raise HTTPException(status_code=400, detail="address required")
+    data = _load_spam()
+    if addr not in data["blocked_addresses"]:
+        data["blocked_addresses"].append(addr)
+        _save_spam(data)
+    return {"success": True, "blocked_addresses": data["blocked_addresses"]}
+
+@app.delete("/gui/spam/address/{address}", tags=["🛡️ Spam Filter"])
+def gui_remove_blocked_address(address: str):
+    """블랙리스트 주소 제거"""
+    data = _load_spam()
+    data["blocked_addresses"] = [a for a in data["blocked_addresses"] if a != address]
+    _save_spam(data)
+    return {"success": True, "blocked_addresses": data["blocked_addresses"]}
+
+@app.post("/gui/spam/keyword", tags=["🛡️ Spam Filter"])
+def gui_add_blocked_keyword(body: dict):
+    """차단 키워드 추가"""
+    kw = body.get("keyword", "").strip().lower()
+    if not kw:
+        raise HTTPException(status_code=400, detail="keyword required")
+    data = _load_spam()
+    if kw not in data["blocked_keywords"]:
+        data["blocked_keywords"].append(kw)
+        _save_spam(data)
+    return {"success": True, "blocked_keywords": data["blocked_keywords"]}
+
+@app.delete("/gui/spam/keyword/{keyword}", tags=["🛡️ Spam Filter"])
+def gui_remove_blocked_keyword(keyword: str):
+    """차단 키워드 제거"""
+    data = _load_spam()
+    data["blocked_keywords"] = [k for k in data["blocked_keywords"] if k != keyword]
+    _save_spam(data)
+    return {"success": True, "blocked_keywords": data["blocked_keywords"]}
+
+
+# --- Scheduler CRUD ---
+SCHEDULES_FILE = os.path.join(os.path.dirname(__file__), "schedules.json")
+
+def _load_schedules():
+    if os.path.exists(SCHEDULES_FILE):
+        with open(SCHEDULES_FILE, "r") as f:
+            return _json.load(f)
+    return []
+
+def _save_schedules(data):
+    with open(SCHEDULES_FILE, "w") as f:
+        _json.dump(data, f, indent=2)
+
+async def _scheduled_e2e_job(schedule_id: str):
+    """스케줄된 E2E Job 실행"""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "python3", os.path.join(os.path.dirname(__file__), "acp_e2e_unified.py"),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+            cwd=os.path.dirname(__file__)
+        )
+        logger.info(f"⏰ Scheduled E2E started (schedule={schedule_id}, PID={proc.pid})")
+    except Exception as e:
+        logger.error(f"⏰ Scheduled E2E failed: {e}")
+
+@app.get("/gui/schedules", tags=["⏰ Scheduler"])
+def gui_list_schedules():
+    """등록된 스케줄 목록 + 내장 스케줄 표시"""
+    custom = _load_schedules()
+    built_in = []
+    if SCHEDULER_AVAILABLE and scheduler:
+        for job in scheduler.get_jobs():
+            built_in.append({
+                "id": job.id, "name": job.name or job.id,
+                "trigger": str(job.trigger), "next_run": str(job.next_run_time),
+                "builtin": True
+            })
+    return {"builtin": built_in, "custom": custom}
+
+@app.post("/gui/schedules", tags=["⏰ Scheduler"])
+def gui_add_schedule(body: dict):
+    """새 E2E 스케줄 등록"""
+    if not SCHEDULER_AVAILABLE or not scheduler:
+        raise HTTPException(status_code=500, detail="APScheduler not available")
+
+    name = body.get("name", "E2E Auto")
+    interval_hours = int(body.get("interval_hours", 6))
+
+    sid = f"gui_e2e_{int(time.time())}"
+    scheduler.add_job(
+        _scheduled_e2e_job, 'interval', hours=interval_hours,
+        id=sid, args=[sid], replace_existing=True,
+        name=name
+    )
+
+    schedule = {
+        "id": sid, "name": name, "interval_hours": interval_hours,
+        "created": datetime.now().isoformat(), "active": True
+    }
+    schedules = _load_schedules()
+    schedules.append(schedule)
+    _save_schedules(schedules)
+
+    logger.info(f"⏰ New schedule: {name} every {interval_hours}h (id={sid})")
+    return {"success": True, "schedule": schedule}
+
+@app.delete("/gui/schedules/{schedule_id}", tags=["⏰ Scheduler"])
+def gui_delete_schedule(schedule_id: str):
+    """스케줄 삭제"""
+    if SCHEDULER_AVAILABLE and scheduler:
+        try:
+            scheduler.remove_job(schedule_id)
+        except Exception:
+            pass
+    schedules = _load_schedules()
+    schedules = [s for s in schedules if s.get("id") != schedule_id]
+    _save_schedules(schedules)
+    return {"success": True}
+
+
 # --- Dashboard HTML 서빙 ---
 @app.get("/dashboard", include_in_schema=False)
 async def serve_dashboard():

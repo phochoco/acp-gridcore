@@ -650,6 +650,7 @@
   <div class="tabs">
     <div class="tab active" data-tab="canvas">🎮 Main</div>
     <div class="tab" data-tab="revenue">💰 Revenue</div>
+    <div class="tab" data-tab="spam">🛡️ Filter</div>
     <div class="tab" data-tab="schedule">⏰ Scheduler</div>
     <div class="tab" data-tab="agents">🤖 Agents</div>
     <div class="tab" data-tab="oracle">🏪 Oracle</div>
@@ -805,45 +806,56 @@
       </div>
 
       <!-- Tab 2: Scheduler -->
-      <div class="tab-content" id="tab-schedule">
-        <div style="font-size:10px;margin-bottom:12px">⏰ Job Scheduler</div>
-        <div style="font-size:7px;color:var(--dim);margin-bottom:16px">크론 스케줄을 등록하면 자동으로 E2E 테스트를 반복 실행합니다.</div>
+      <!-- Tab: Spam Filter -->
+      <div class="tab-content" id="tab-spam">
+        <div style="font-size:10px;margin-bottom:16px">🛡️ Spam Filter</div>
 
-        <div id="scheduleList">
-          <div class="schedule-item">
-            <div>
-              <div class="info">🤖 Bot Marketing</div>
-              <div class="time">Every 30 min</div>
-            </div>
-            <span class="badge done">ACTIVE</span>
-          </div>
-          <div class="schedule-item">
-            <div>
-              <div class="info">📊 Daily Report</div>
-              <div class="time">09:00 KST</div>
-            </div>
-            <span class="badge done">ACTIVE</span>
-          </div>
+        <div style="font-size:8px;margin-bottom:8px">🚫 BLOCKED ADDRESSES</div>
+        <div id="spamAddrList"></div>
+        <div style="display:flex;gap:8px;margin:8px 0 16px">
+          <input id="newAddr" placeholder="0x..."
+            style="flex:1;padding:6px;background:#1a1a2e;border:1px solid var(--border);color:var(--text);font-family:var(--pixel-font);font-size:7px;border-radius:4px">
+          <button class="btn success" style="font-size:6px" onclick="addSpamAddr()">+ Add</button>
         </div>
 
         <div class="pixel-divider"></div>
-        <div style="font-size:8px;margin-bottom:8px">➕ 새 스케줄 추가 (Coming Soon)</div>
-        <div class="form-group">
-          <label>서비스</label>
-          <select disabled>
-            <option>sectorFeed</option>
-            <option>dailySignal</option>
+
+        <div style="font-size:8px;margin-bottom:8px">🔤 BLOCKED KEYWORDS</div>
+        <div id="spamKwList" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px"></div>
+        <div style="display:flex;gap:8px;margin-bottom:16px">
+          <input id="newKw" placeholder="keyword"
+            style="flex:1;padding:6px;background:#1a1a2e;border:1px solid var(--border);color:var(--text);font-family:var(--pixel-font);font-size:7px;border-radius:4px">
+          <button class="btn success" style="font-size:6px" onclick="addSpamKw()">+ Add</button>
+        </div>
+
+        <div class="pixel-divider"></div>
+        <div style="font-size:7px;color:var(--dim)">⚠️ 변경 후 셀러 재시작 필요 (Main 탭 → Restart Seller)</div>
+      </div>
+
+      <!-- Tab: Scheduler -->
+      <div class="tab-content" id="tab-schedule">
+        <div style="font-size:10px;margin-bottom:12px">⏰ Job Scheduler</div>
+
+        <div style="font-size:8px;color:var(--dim);margin-bottom:12px">📌 BUILT-IN</div>
+        <div id="builtinSchedules"></div>
+
+        <div class="pixel-divider"></div>
+        <div style="font-size:8px;color:var(--dim);margin-bottom:12px">🔧 CUSTOM SCHEDULES</div>
+        <div id="customSchedules"></div>
+
+        <div class="pixel-divider"></div>
+        <div style="font-size:8px;margin-bottom:8px">➕ 새 E2E 스케줄 등록</div>
+        <div class="form-group"><label>이름</label><input id="schName" placeholder="e.g. Auto E2E"></div>
+        <div class="form-group"><label>반복 주기 (시간)</label>
+          <select id="schInterval">
+            <option value="1">매 1시간</option>
+            <option value="3">매 3시간</option>
+            <option value="6" selected>매 6시간</option>
+            <option value="12">매 12시간</option>
+            <option value="24">매일</option>
           </select>
         </div>
-        <div class="form-group">
-          <label>반복 주기</label>
-          <select disabled>
-            <option>매 1시간</option>
-            <option>매 6시간</option>
-            <option>매일</option>
-          </select>
-        </div>
-        <button class="btn" disabled>등록 (준비 중)</button>
+        <button class="btn success" onclick="addSchedule()">등록</button>
       </div>
 
       <!-- Tab 3: Multi-Agent -->
@@ -1135,11 +1147,99 @@
       } catch (e) { console.error('revenue error:', e); }
     }
 
+    // === Spam Filter ===
+    async function loadSpam() {
+      try {
+        const r = await fetch(API + '/gui/spam');
+        const d = await r.json();
+
+        // Addresses
+        const addrDiv = document.getElementById('spamAddrList');
+        addrDiv.innerHTML = '';
+        d.blocked_addresses.forEach(addr => {
+          addrDiv.innerHTML += `<div class="schedule-item"><div><div class="info" style="font-size:6px">${addr}</div></div><button class="btn danger" style="font-size:5px;padding:2px 6px" onclick="removeSpamAddr('${addr}')">❌</button></div>`;
+        });
+        if (!d.blocked_addresses.length) addrDiv.innerHTML = '<div style="font-size:7px;color:var(--dim)">No blocked addresses</div>';
+
+        // Keywords
+        const kwDiv = document.getElementById('spamKwList');
+        kwDiv.innerHTML = '';
+        d.blocked_keywords.forEach(kw => {
+          kwDiv.innerHTML += `<span class="badge" style="background:#7f1d1d;color:#fca5a5;cursor:pointer" onclick="removeSpamKw('${kw}')">${kw} ×</span>`;
+        });
+      } catch (e) { }
+    }
+
+    async function addSpamAddr() {
+      const addr = document.getElementById('newAddr').value.trim();
+      if (!addr) return;
+      await fetch(API + '/gui/spam/address', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: addr }) });
+      document.getElementById('newAddr').value = '';
+      loadSpam();
+    }
+
+    async function removeSpamAddr(addr) {
+      await fetch(API + '/gui/spam/address/' + addr, { method: 'DELETE' });
+      loadSpam();
+    }
+
+    async function addSpamKw() {
+      const kw = document.getElementById('newKw').value.trim();
+      if (!kw) return;
+      await fetch(API + '/gui/spam/keyword', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keyword: kw }) });
+      document.getElementById('newKw').value = '';
+      loadSpam();
+    }
+
+    async function removeSpamKw(kw) {
+      await fetch(API + '/gui/spam/keyword/' + kw, { method: 'DELETE' });
+      loadSpam();
+    }
+
+    // === Scheduler ===
+    async function loadSchedules() {
+      try {
+        const r = await fetch(API + '/gui/schedules');
+        const d = await r.json();
+
+        const biDiv = document.getElementById('builtinSchedules');
+        biDiv.innerHTML = '';
+        d.builtin.forEach(s => {
+          biDiv.innerHTML += `<div class="schedule-item"><div><div class="info">${s.name}</div><div class="time">${s.trigger}</div></div><span class="badge done">ACTIVE</span></div>`;
+        });
+        if (!d.builtin.length) biDiv.innerHTML = '<div style="font-size:7px;color:var(--dim)">No built-in schedules</div>';
+
+        const csDiv = document.getElementById('customSchedules');
+        csDiv.innerHTML = '';
+        d.custom.forEach(s => {
+          csDiv.innerHTML += `<div class="schedule-item"><div><div class="info">${s.name}</div><div class="time">Every ${s.interval_hours}h</div></div><button class="btn danger" style="font-size:5px;padding:2px 6px" onclick="deleteSchedule('${s.id}')">❌</button></div>`;
+        });
+        if (!d.custom.length) csDiv.innerHTML = '<div style="font-size:7px;color:var(--dim)">No custom schedules</div>';
+      } catch (e) { }
+    }
+
+    async function addSchedule() {
+      const name = document.getElementById('schName').value || 'Auto E2E';
+      const interval_hours = parseInt(document.getElementById('schInterval').value);
+      const r = await fetch(API + '/gui/schedules', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, interval_hours }) });
+      const d = await r.json();
+      if (d.success) { alert(`✅ ${name} 등록 (${interval_hours}시간마다)`); loadSchedules(); }
+      else alert('❌ 실패');
+    }
+
+    async function deleteSchedule(id) {
+      if (!confirm('삭제?')) return;
+      await fetch(API + '/gui/schedules/' + id, { method: 'DELETE' });
+      loadSchedules();
+    }
+
     // === Init ===
     refreshStatus();
     loadJobs();
     loadAgents();
     loadRevenue();
+    loadSpam();
+    loadSchedules();
     connectLogStream();
     setInterval(refreshStatus, 30000);
     setInterval(loadJobs, 60000);
