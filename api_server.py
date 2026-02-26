@@ -1084,7 +1084,7 @@ def gui_status():
     seller_active = False
     try:
         r = subprocess.run(
-            ["systemctl", "is-active", "trinity-seller"],
+            ["/usr/bin/systemctl", "is-active", "trinity-seller"],
             capture_output=True, text=True, timeout=5
         )
         seller_active = r.stdout.strip() == "active"
@@ -1109,7 +1109,7 @@ def gui_seller_control(action: str):
         raise HTTPException(status_code=400, detail="action must be start/stop/restart")
     try:
         r = subprocess.run(
-            ["sudo", "systemctl", action, "trinity-seller"],
+            ["sudo", "/usr/bin/systemctl", action, "trinity-seller"],
             capture_output=True, text=True, timeout=15
         )
         return {"action": action, "success": r.returncode == 0, "output": r.stderr.strip() or r.stdout.strip()}
@@ -1136,7 +1136,7 @@ async def gui_log_stream():
     """SSE: journalctl -u trinity-seller -f 실시간 스트리밍"""
     async def event_generator():
         proc = await asyncio.create_subprocess_exec(
-            "journalctl", "-u", "trinity-seller", "-f", "-n", "50", "--no-pager",
+            "/usr/bin/journalctl", "-u", "trinity-seller", "-f", "-n", "50", "--no-pager",
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT
         )
         try:
@@ -1163,7 +1163,7 @@ def gui_jobs():
     jobs = []
     try:
         r = subprocess.run(
-            ["journalctl", "-u", "trinity-seller", "--since", "24 hours ago",
+            ["/usr/bin/journalctl", "-u", "trinity-seller", "--since", "24 hours ago",
              "--no-pager", "-o", "short-iso"],
             capture_output=True, text=True, timeout=10
         )
